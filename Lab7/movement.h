@@ -25,6 +25,7 @@ void move_backward(oi_t *sensor_data, double distance_mm);
 void turn_right(oi_t *sensor_data, double degrees);
 void turn_left(oi_t *sensor_data, double degrees);
 int go_to_position(oi_t *sensor_data, float angle, float distance_cm);
+void go_around(oi_t *sensor_data, int left_or_right);
 
 
 // Smart movement with obstacle avoidance
