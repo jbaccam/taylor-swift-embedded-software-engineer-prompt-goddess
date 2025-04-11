@@ -317,58 +317,6 @@ int go_to_position(oi_t *sensor_data, float angle, float distance_cm)
                 go_around(sensor_data, 0);
             }
 
-            // check for bumps
-//            if (left_bump_status != 0) // left bumper triggered
-//            {
-//                uart_sendStr("Bump detected!\r\n");
-//                oi_setWheels(0, 0);
-//                move_backward(sensor_data, 150); // backup after collision
-//
-//                // Hit left bumper - go around to the right
-//                uart_sendStr("Going around to the right\r\n");
-//                faster_turn_right(sensor_data, 90);
-//                uart_sendStr("Moving to the side (700mm)\r\n");
-//                faster_move_forward(sensor_data, 700); // 700mm to the side
-//
-//                faster_turn_left(sensor_data, 90); // Face forward again (north)
-//                uart_sendStr("Moving forward past obstacle (1000mm)\r\n");
-//                faster_move_forward(sensor_data, 1200); // 1 meter forward --------------------------------------------------------TESTING-----------------------------------
-//
-//                faster_turn_left(sensor_data, 90); // Turn toward original path (facing west)
-//                uart_sendStr("Moving back toward original path (700mm)\r\n");
-//                faster_move_forward(sensor_data, 700); // 700mm back toward path
-//
-//                // PROPERLY FIXED: Now we're facing west, need to turn right 90 to face south
-//                uart_sendStr("Turning right 90 degrees to face south\r\n");
-//                faster_turn_left(sensor_data, 90);   // Turn right to face south
-//            }
-//
-//            if (right_bump_status != 0) // right bumper triggered
-//            {
-//                uart_sendStr("Bump detected!\r\n");
-//                oi_setWheels(0, 0);
-//                move_backward(sensor_data, 150); // backup after collision
-//
-//                // Hit right bumper - go around to the left
-//                uart_sendStr("Going around to the left\r\n");
-//
-//                faster_turn_left(sensor_data, 90);
-//                uart_sendStr("Moving to the side (700mm)\r\n");
-//                faster_move_forward(sensor_data, 700); // 700mm to the side
-//
-//                faster_turn_right(sensor_data, 90); // Face forward again (north)
-//                uart_sendStr("Moving forward past obstacle (1000mm)\r\n");
-//                faster_move_forward(sensor_data, 1200); // 1 meter forward --------------------------------------------------------TESTING-----------------------------------
-//
-//                faster_turn_right(sensor_data, 90); // Turn toward original path (facing east)
-//                uart_sendStr("Moving back toward original path (700mm)\r\n");
-//                faster_move_forward(sensor_data, 700); // 700mm back toward path
-//
-//                // PROPERLY FIXED: Now we're facing east, need to turn left 90 to face south
-//                uart_sendStr("Turning left 90 degrees to face south\r\n");
-//                faster_turn_right(sensor_data, 90);   // Turn left to face south
-//            }
-
             uart_sendStr("Navigation complete. Performing rescan...\r\n");
             return 1; // Signal caller to rescan
         }
