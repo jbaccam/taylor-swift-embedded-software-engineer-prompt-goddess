@@ -8,21 +8,19 @@
 #include "Timer.h"
 #include "driverlib/interrupt.h"
 
-// Global shared variables
-volatile uint32_t g_start_time = 0;
-volatile uint32_t g_end_time = 0;
-volatile enum
-{
-    LOW, HIGH, DONE
-} g_state = LOW; // State of ping echo pulse
+// Global shared variables - only used within ping.c
+volatile enum {LOW, HIGH, DONE} state = LOW; // State of ping echo pulse
+volatile unsigned int rising_time = 0;  // Timer value at rising edge
+volatile unsigned int falling_time = 0;  // Timer value at falling edge
+volatile unsigned int overflow_count = 0;  // Count of timer overflows
 
 void ping_init(void)
 {
-    // enable clock to GPIO port B
-    SYSCTL_RCGCGPIO_R |= 0x02;  // enable clock to Port B (bit 1) page 340
-    SYSCTL_RCGCTIMER_R |= 0x08;  // enable clock to bit 3 for timer
+    // Enable clock to GPIO port B and Timer 3
+    SYSCTL_RCGCGPIO_R |= 0x02;  // enable clock to Port B (bit 1)
+    SYSCTL_RCGCTIMER_R |= 0x08;  // enable clock to Timer 3 (bit 3)
 
-    // wait for GPIOB peripherals to be ready
+    // Wait for GPIOB and Timer3 peripherals to be ready
     while ((SYSCTL_PRGPIO_R & 0x02) == 0)
     {
     };
@@ -30,130 +28,156 @@ void ping_init(void)
     {
     };
 
-    // enable digital output for pb3
-    GPIO_PORTB_DEN_R |= 0x08;  // pb3
+    // Enable digital I/O on PB3
+    GPIO_PORTB_DEN_R |= 0x08;  // PB3
 
-    // Register the interrupt handler
-    IntRegister(INT_TIMER3B, TIMER3B_Handler);
+    // Set up PB3 as Timer3B capture pin
+    GPIO_PORTB_PCTL_R &= 0xFFFF0FFF;  // Clear PCTL bits for PB3
+    GPIO_PORTB_PCTL_R |= 0x00007000;  // Set PB3 as T3CCP1 (function 7)
 
-    // Enable NVIC for Timer3B
-    NVIC_EN1_R |= 0x10;         // bit 4 in EN1 for Timer3B
+    // Disable Timer3B during configuration
+    TIMER3_CTL_R &= ~0x0100;  // Clear bit 8 to disable Timer3B
 
-    IntMasterEnable();
-
-    // Configure and enable the timer
-    TIMER3_CTL_R &= 0xFEFF;    // Disable Timer3B (clear bit 8)
-
-    TIMER3_CFG_R = 0x4;        // 16-bit timer configuration
+    // Configure Timer3B
+    TIMER3_CFG_R = 0x04;  // 16-bit timer configuration
 
     // Configure Timer3B for input capture mode
-    TIMER3_TBMR_R = 0;         // Clear all mode bits first
-    TIMER3_TBMR_R |= 0x3;      // Set bits 0-1 for capture mode
-    TIMER3_TBMR_R |= 0x4;      // Set bit 2 for edge-time mode
-
-    // Set prescaler to extend timer to 24 bits
-    TIMER3_TBPR_R = 0xFF;      // 8-bit prescaler (upper 8 bits)
-    TIMER3_TBILR_R = 0xFFFF;   // 16-bit load value (lower 16 bits)
+    TIMER3_TBMR_R = 0x07;  // Capture mode (bits 0-1=3), edge-time mode (bit 2=1)
+    TIMER3_TBMR_R &= ~0x10;  // Count down (clear bit 4)
 
     // Configure to capture both edges
-    TIMER3_CTL_R |= 0x0C00;    // bits 10-11 set to 3 (capture both edges)
+    TIMER3_CTL_R |= 0x0C00;  // Bits 10-11 = 3 to capture both edges
 
-    // Enable interrupt for capture events
-    TIMER3_IMR_R |= 0x400;     // bit 10 enables capture event interrupt
+    // Set up timer values for 24-bit timer
+    TIMER3_TBILR_R = 0xFFFF;  // Maximum load value for 16-bit timer
+    TIMER3_TBPR_R = 0xFF;     // Maximum prescale value for additional 8 bits
 
-    // Finally, enable Timer3B
-    TIMER3_CTL_R |= 0x0100;    // Enable Timer3B (set bit 8)
+    // Enable interrupt for Timer3B capture events
+    TIMER3_IMR_R |= 0x400;  // Bit 10 enables capture event interrupt
+
+    // Enable Timer3B
+    TIMER3_CTL_R |= 0x0100;  // Set bit 8 to enable Timer3B
+
+    // Register and enable the interrupt handler
+    IntRegister(INT_TIMER3B, TIMER3B_Handler);
+    NVIC_EN1_R |= 0x10;  // Bit 4 in EN1 enables interrupt for Timer3B
+
+    // Enable global interrupts
+    IntMasterEnable();
 }
 
 void ping_trigger(void)
 {
-    // First, disable Timer3B and its interrupt
-    TIMER3_CTL_R &= ~0x0100;   // Disable Timer3B
-    TIMER3_IMR_R &= ~0x400;    // Disable capture event interrupt
-
-    // Disable alt function on pb3 for part 1
-    GPIO_PORTB_AFSEL_R &= ~0x08;
-
-    // set direction as output for pb3
-    GPIO_PORTB_DIR_R |= 0x08;
+    // Disable Timer3B interrupt during trigger
+    TIMER3_IMR_R &= ~0x400;  // Disable capture event interrupt
 
     // Reset state for new measurement
-    g_state = LOW;
+    state = LOW;
 
-    // drive pb3 low->high->low
-    GPIO_PORTB_DATA_R &= ~0x08;  // ensure low - 0
-    GPIO_PORTB_DATA_R |= 0x08;   // drive high - 1
-    timer_waitMicros(5);         // 5µs as per datasheet
-    GPIO_PORTB_DATA_R &= ~0x08;  // back low - 0
+    // Disable alternate function to use PB3 as GPIO
+    GPIO_PORTB_AFSEL_R &= ~0x08;
 
-    // Configure PB3 for timer capture (T3CCP1)
-    GPIO_PORTB_DIR_R &= ~0x08;         // Set PB3 as input for echo
-    GPIO_PORTB_PCTL_R &= ~0x0000F000;  // Clear PCTL bits for PB3
-    GPIO_PORTB_PCTL_R |= 0x00007000;   // Set PB3 as T3CCP1 (function 7)
+    // Configure PB3 as output for trigger pulse
+    GPIO_PORTB_DIR_R |= 0x08;
 
-    // re-enable alt function on pb3 for timer
+    // Generate trigger pulse (LOW-HIGH-LOW)
+    GPIO_PORTB_DATA_R &= ~0x08;  // Set PB3 low
+    GPIO_PORTB_DATA_R |= 0x08;   // Set PB3 high
+    timer_waitMicros(5);         // 5µs trigger pulse
+    GPIO_PORTB_DATA_R &= ~0x08;  // Set PB3 low
+
+    // Configure PB3 as input for capture
+    GPIO_PORTB_DIR_R &= ~0x08;
+
+    // Enable alternate function to use PB3 as timer input
     GPIO_PORTB_AFSEL_R |= 0x08;
 
     // Clear any pending interrupts
     TIMER3_ICR_R = 0x400;
 
-    // Re-enable Timer3B and its interrupt
-    TIMER3_IMR_R |= 0x400;     // Enable capture event interrupt
-    TIMER3_CTL_R |= 0x0100;    // Enable Timer3B
+    // Re-enable Timer3B capture interrupt
+    TIMER3_IMR_R |= 0x400;
 }
 
 void TIMER3B_Handler(void)
 {
-    // Check if capture event triggered the interrupt
-    if (TIMER3_MIS_R & 0x400) {
+    // Check if this is a capture event
+    if ((TIMER3_MIS_R & 0x400) == 0x400) {
         // Clear the interrupt
         TIMER3_ICR_R = 0x400;
 
-        // Read the captured timer value (24-bit)
-        uint32_t timer_value = TIMER3_TBR_R;
-
-        // Update based on current state
-        if (g_state == LOW) {
+        // Process based on current state
+        if (state == LOW) {
             // Rising edge detected
-            g_start_time = timer_value;
-            g_state = HIGH;
+            rising_time = TIMER3_TBR_R;
+            state = HIGH;
         }
-        else if (g_state == HIGH) {
+        else if (state == HIGH) {
             // Falling edge detected
-            g_end_time = timer_value;
-            g_state = DONE;
+            falling_time = TIMER3_TBR_R;
+            state = DONE;
         }
+    }
+
+    // Check for timer overflow
+    if ((TIMER3_MIS_R & 0x100) == 0x100) {
+        // Clear the timer overflow interrupt
+        TIMER3_ICR_R = 0x100;
+        overflow_count++;
     }
 }
 
 float ping_getDistance(void)
 {
-    // Wait until echo pulse is captured
-    while (g_state != DONE) {}
-
-    // Calculate pulse width
-    uint32_t pulse_width;
-
-    // Since we're counting down, check for timer wrap-around
-    if (g_start_time < g_end_time) {
-        // Timer wrapped around (overflow occurred)
-        pulse_width = (0xFFFFFF - g_end_time) + g_start_time + 1;
-    } else {
-        // No overflow
-        pulse_width = g_start_time - g_end_time;
+    // Wait until a complete echo pulse has been measured
+    while (state != DONE) {
+        // Wait for capture to complete
     }
 
-    // Convert to time in milliseconds
-    // Each timer tick is 62.5ns (1/16MHz)
-    float pulse_time_ms = pulse_width * 0.0000625;
+    // Calculate pulse width in clock cycles
+    unsigned int time;
 
-    // Calculate distance in cm
-    // Distance = (time in seconds * speed of sound) / 2
-    // Speed of sound = 343 m/s = 34300 cm/s
-    float distance_cm = pulse_time_ms * 17.15;  // 17.15 = 0.001 * 34300 / 2
+    // Check for timer overflow
+    if (falling_time > rising_time) {
+        // Timer wrapped around
+        time = (rising_time + 0xFFFFFF) - falling_time;
+    } else {
+        // Normal case
+        time = rising_time - falling_time;
+    }
 
-    // Reset state for next measurement
-    g_state = LOW;
+    // Convert to distance in cm
+    // Using the reference implementation's conversion factor
+    float distance = time * 0.0010625;
 
-    return distance_cm;
+    return distance;
+}
+
+// Additional functions to provide read-only access to pulse information
+unsigned int ping_getPulseTime(void)
+{
+    // Wait for pulse to be complete
+    while (state != DONE) {
+        // Wait for capture to complete
+    }
+
+    // Calculate pulse width in clock cycles
+    if (falling_time > rising_time) {
+        // Timer wrapped around
+        return (rising_time + 0xFFFFFF) - falling_time;
+    } else {
+        // Normal case
+        return rising_time - falling_time;
+    }
+}
+
+float ping_getPulseMillis(void)
+{
+    // Convert pulse time to milliseconds
+    return ping_getPulseTime() * 0.0000625;
+}
+
+unsigned int ping_getOverflowCount(void)
+{
+    return overflow_count;
 }

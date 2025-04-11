@@ -2,8 +2,8 @@
 #include "cyBot_uart.h"
 #include "Timer.h"
 #include "lcd.h"
-#define LEFT_CAL 1198750
-#define RIGHT_CAL 274750
+#define LEFT_CAL 1167250
+#define RIGHT_CAL 2432250
 
 int main(void)
 {

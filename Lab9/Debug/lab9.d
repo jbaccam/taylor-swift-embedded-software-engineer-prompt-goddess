@@ -21,6 +21,12 @@ lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/stdarg.
 lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/string.h
 lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/xlocale/_string.h
 lab9.obj: ../ping.h
+lab9.obj: ../cyBot_Scan.h
+lab9.obj: ../open_interface.h
+lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/stdlib.h
+lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/math.h
+lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/_defs.h
+lab9.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/machine/_limits.h
 
 ../lab9.c:
 
@@ -63,4 +69,16 @@ C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/string.h:
 C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/xlocale/_string.h:
 
 ../ping.h:
+
+../cyBot_Scan.h:
+
+../open_interface.h:
+
+C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/stdlib.h:
+
+C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/math.h:
+
+C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/_defs.h:
+
+C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/machine/_limits.h:
 

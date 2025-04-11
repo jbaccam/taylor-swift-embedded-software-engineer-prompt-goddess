@@ -6,7 +6,11 @@
 #include "Timer.h"
 #include "lcd.h"
 #include "ping.h"
-#include <stdbool.h>
+#include "cyBot_Scan.h"  // For CyBot scanner functions
+#include "open_interface.h"  // For Open Interface functions
+
+#define LEFT_CAL 1177750
+#define RIGHT_CAL 264250
 
 int main(void) {
     // Initialize hardware components
@@ -14,11 +18,16 @@ int main(void) {
     lcd_init();
     ping_init();
 
-    // Variables to track measurements
-    uint32_t pulse_width_cycles = 0;
-    float pulse_width_ms = 0.0;
-    float distance_cm = 0.0;
-    unsigned int overflow_count = 0;
+    // Initialize the CyBot scanner
+    cyBOT_init_Scan(0b0111);  // Initialize servo and other components
+
+    // Position the servo to face forward (90 degrees)
+    cyBOT_Scan_t scan;
+    cyBOT_Scan(90, &scan);
+
+    // Initialize Open Interface
+    oi_t *sensor_data = oi_alloc();
+    oi_init(sensor_data);
 
     // Main measurement loop
     while(1)
@@ -27,25 +36,16 @@ int main(void) {
         ping_trigger();
 
         // Get the distance measurement
-        distance_cm = ping_getDistance();
+        float distance_cm = ping_getDistance();
 
-        // Calculate pulse width in clock cycles
-        if (g_start_time < g_end_time) {
-            // Timer wrapped around (overflow occurred)
-            pulse_width_cycles = (0xFFFFFF - g_end_time) + g_start_time + 1;
-            overflow_count++; // Increment overflow counter
-        } else {
-            // No overflow
-            pulse_width_cycles = g_start_time - g_end_time;
-        }
-
-        // Calculate pulse width in milliseconds
-        // Each timer tick is 62.5ns (1/16MHz)
-        pulse_width_ms = pulse_width_cycles * 0.0000625;
+        // Get pulse information using helper functions
+        unsigned int pulse_width_cycles = ping_getPulseTime();
+        float pulse_width_ms = ping_getPulseMillis();
+        unsigned int overflow_count = ping_getOverflowCount();
 
         // Display the results on LCD
         lcd_clear();
-        lcd_printf("Pulse: %u cycles\n"
+        lcd_printf("Pulse: %u c\n"
                    "Time: %.3f ms\n"
                    "Dist: %.1f cm\n"
                    "Oflows: %u",
@@ -57,4 +57,8 @@ int main(void) {
         // Wait before next measurement (as specified in lab)
         timer_waitMillis(300);
     }
+
+    // This code is never reached, but included for completeness
+    oi_free(sensor_data);
+    return 0;
 }
