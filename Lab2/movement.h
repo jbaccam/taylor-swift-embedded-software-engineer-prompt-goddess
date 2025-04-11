@@ -1,0 +1,30 @@
+/*
+ * movement.h
+ *
+ *  Created on: Feb 7, 2025
+ *      Author: jjbaccam
+ */
+
+#ifndef MOVEMENT_H_
+#define MOVEMENT_H_
+#ifndef HEADER_FILE
+#define HEADER_FILE
+
+#include "open_interface.h"  // or whatever you need for oi_t
+
+// Prototypes of movement functions:
+void turn_right(oi_t *sensor_data, double degrees);
+void turn_left(oi_t *sensor_data, double degrees);
+void move_forward(oi_t *sensor_data, double distance_mm);
+void move_backward(oi_t *sensor_data, double distance_mm);
+void move_square(oi_t *sensor_data);
+void move_forward_smart(oi_t *sensor_data, double distance_mm);
+
+class movement
+{
+public:
+    movement();
+    virtual ~movement();
+};
+
+#endif /* MOVEMENT_H_ */

@@ -1,0 +1,18 @@
+
+
+/**
+ * main.c
+ */
+#include "Cybot_uart.h
+#include "Cybot_scan.h
+#include "Timer.h"
+#include "lcd.h"
+
+int main (void) {
+    timer_init(); //init timer
+    lcd_init();   // init lcd (clears display)
+    cyBOT_init_Scan();
+    cyBOT_SERVO_cal
+
+    return 0;
+}

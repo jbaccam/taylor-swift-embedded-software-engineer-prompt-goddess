@@ -1,0 +1,107 @@
+/*
+ *
+ *   uart.c
+ *
+ *
+ *
+ *   @author Jeremiah Baccam, Luke Patterson
+ *   @date
+ */
+
+#include <inc/tm4c123gh6pm.h>
+#include <stdint.h>
+#include "uart.h"
+
+void uart_init(void)
+{
+    //TODO
+    //enable clock to GPIO port B
+    SYSCTL_RCGCGPIO_R |= 0b00000010;  // enable clock to Port B (bit 1) page 340
+    //wait for GPIOB peripherals to be ready
+    while ((SYSCTL_PRGPIO_R & 0b00000010) == 0){}; // page 344
+
+    //enable clock to UART1
+    SYSCTL_RCGCUART_R |= 0b00000010;  // enable clock to UART1 (bit 1)
+    //wait for UART1 peripherals to be ready
+    while ((SYSCTL_PRUART_R & 0b00000010) == 0){};
+
+    // clear lower 8 bits
+    //enable alternate functions on port B pins
+    GPIO_PORTB_AFSEL_R |= 0b00000011; // pb0, pb1, page 671
+
+    // enable digital functionality on port B pins
+    GPIO_PORTB_DEN_R |= 0b00000011; // pb0, pb1
+
+    // set them to 0b00010001 for PB0=UART1Rx, PB1=UART1Tx
+    // enable UART1 Rx and Tx on port B pins, page 650, 689
+    // [3:0]  PB0 Set 0b0001 for UART1 Rx
+    // [7:4]  PB1 Set 0b0001 for UART1 Tx
+    GPIO_PORTB_PCTL_R &= ~0b11111111;   // force 0s in bits [7..0]
+    GPIO_PORTB_PCTL_R |= 0b00010001;   // PB0 => UART1Rx, PB1 => UART1Tx
+
+
+    //turn off UART1 while setting it up
+    // 0xFFFFFFFE  =  1111 1111 1111 1111 1111 1111 1111 1110
+    // bit field 0 is uarten, 0 uart is disabled, 1 is enable
+    // doing 1 on everything and 0 and & operation forces 0 on bit 0 and leaves everything else unchanged
+    UART1_CTL_R &= 0xFFFFFFFE;  // disable UART1, page 918
+
+    //set baud rate
+    //note: to take effect, there must be a write to LCRH after these assignments
+    UART1_IBRD_R = 0x0008;
+    UART1_FBRD_R = 0x002C;
+
+    //set frame, 8 data bits, 1 stop bit, no parity, no FIFO
+    //note: this write to LCRH must be after the BRD assignments
+    UART1_LCRH_R = 0b01100000; // write serial communication parameters, page 916, * 8bit and no parity
+
+    //use system clock as source
+    //note from the datasheet UARTCCC register description:
+    //field is 0 (system clock) by default on reset
+    //Good to be explicit in your code
+    UART1_CC_R = 0x0; // use system clock as clock source (page 939)
+
+    //re-enable UART1 and also enable RX, TX (three bits)
+    //note from the datasheet UARTCTL register description:
+    //RX and TX are enabled by default on reset
+    //Good to be explicit in your code
+    //Be careful to not clear RX and TX enable bits
+    //(either preserve if already set or set them)
+    UART1_CTL_R |= 0x1; // re-enable UART1
+
+}
+
+// If TXFF = 1 then the FIFO is full, so you cant write anymore til it clears up
+// then it sends that data to the register
+void uart_sendChar(char data)
+{
+    // wait while TXFF (bit 5) is set => FIFO is full
+    while (UART1_FR_R & 0b00100000){}
+    // write data to the DATA register
+    UART1_DR_R = data;
+}
+
+
+// If RXFE = 1 then the FIFO is empty so it waits until it recieves data
+// then it returns the character from the register
+char uart_receive(void)
+{
+    // wait while RXFE (bit 4) is set => FIFO is empty
+    while (UART1_FR_R & 0b00010000){}
+    // return lower 8 bits of UART1_DR_R
+    return (char) (UART1_DR_R & 0b11111111);
+}
+
+void uart_sendStr(const char *data)
+{
+
+    short j = 0;
+
+    while (*(data + j) != '\0')
+    {
+        uart_sendChar(*(data + j));
+        j++;
+    }
+
+}
+

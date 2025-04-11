@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">&#x0A;<refactoring comment="Rename resource &apos;Lab3/libcybotUART.txt&apos; to &apos;libcybotUART.lib&apos;" description="Rename resource &apos;libcybotUART.txt&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="libcybotUART.txt" name="libcybotUART.lib" stamp="1739563837216" updateReferences="true"/>&#x0A;<refactoring comment="Rename resource &apos;Lab3/libcybotScan.txt&apos; to &apos;libcybotScan.lib&apos;" description="Rename resource &apos;libcybotScan.txt&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="libcybotScan.txt" name="libcybotScan.lib" stamp="1739563843647" updateReferences="true"/>
+</session>

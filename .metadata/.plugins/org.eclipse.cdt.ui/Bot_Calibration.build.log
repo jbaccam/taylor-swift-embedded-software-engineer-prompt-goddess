@@ -1,0 +1,26 @@
+
+**** Build of configuration Debug for project Bot_Calibration ****
+
+"C:\\ti\\ccs1271\\ccs\\utils\\bin\\gmake" -k -j 24 all -O 
+ 
+Building target: "Bot_Calibration.out"
+Invoking: Arm Linker
+"C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/bin/armcl" -mv7M4 --code_state=16 --float_support=FPv4SPD16 -me --define=ccs="ccs" --define=PART_TM4C123GH6PM -g --gcc --diag_warning=225 --diag_wrap=off --display_error_number --abi=eabi -z -m"Bot_Calibration.map" --heap_size=4096 --stack_size=4096 -i"C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/lib" -i"C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include" --reread_libs --diag_wrap=off --display_error_number --warn_sections --xml_link_info="Bot_Calibration_linkInfo.xml" --rom_model -o "Bot_Calibration.out" "./Timer.obj" "./lcd.obj" "./main.obj" "./tm4c123gh6pm_startup_ccs.obj" "../tm4c123gh6pm.cmd"  -llibc.a -l"C:/ti/TivaWare_C_Series-2.2.0.295/driverlib/ccs/Debug/driverlib.lib" 
+<Linking>
+ 
+ undefined       first referenced
+ 
+>> Compilation failure
+  symbol             in file     
+makefile:139: recipe for target 'Bot_Calibration.out' failed
+ ---------       ----------------
+ cyBOT_SERVO_cal ./main.obj      
+ cyBOT_init_Scan ./main.obj      
+ 
+error #10234-D: unresolved symbols remain
+error #10010: errors encountered during linking; "Bot_Calibration.out" not built
+gmake[1]: *** [Bot_Calibration.out] Error 1
+gmake: *** [all] Error 2
+makefile:135: recipe for target 'all' failed
+
+**** Build Finished ****
