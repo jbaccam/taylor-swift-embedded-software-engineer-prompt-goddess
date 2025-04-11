@@ -33,4 +33,9 @@ void TIMER3B_Handler(void);
  */
 float ping_getDistance (void);
 
+// Helper functions to access pulse information
+unsigned int ping_getPulseTime(void);
+float ping_getPulseMillis(void);
+unsigned int ping_getOverflowCount(void);
+
 #endif /* PING_H_ */
