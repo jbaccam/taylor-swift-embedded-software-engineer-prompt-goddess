@@ -5673,3 +5673,21 @@ java.io.IOException: Cannot run program "g++": Launching failed
 
 !ENTRY org.eclipse.cdt.core 1 0 2025-04-17 13:52:04.611
 !MESSAGE Indexed 'Lab10' (8 sources, 45 headers) in 0.297 sec: 1,962 declarations; 3,449 references; 0 unresolved inclusions; 0 syntax errors; 0 unresolved names (0%)
+
+!ENTRY org.eclipse.core.resources 4 1 2025-04-17 14:00:28.672
+!MESSAGE Problems occurred refreshing resources
+!SUBENTRY 1 org.eclipse.core.resources 4 1 2025-04-17 14:00:28.672
+!MESSAGE Problem finding next change, code: 995
+
+!ENTRY org.eclipse.core.resources 4 1 2025-04-17 14:00:31.696
+!MESSAGE Problems occurred refreshing resources
+!SUBENTRY 1 org.eclipse.core.resources 4 1 2025-04-17 14:00:31.696
+!MESSAGE Problem finding next change, code: 995
+
+!ENTRY com.ti.ccstudio.debug 1 0 2025-04-17 14:07:51.289
+!MESSAGE DS_ERROR: CORTEX_M4_0: GEL: Encountered a problem loading file: U:\CprE288Workspace\Lab10\Debug\Lab10.out Could not open file
+
+
+!ENTRY com.ti.ccstudio.debug 1 0 2025-04-17 14:09:57.390
+!MESSAGE DS_ERROR: CORTEX_M4_0: GEL: Encountered a problem loading file: U:\CprE288Workspace\Lab10\Debug\Lab10.out Could not open file
+

@@ -12,10 +12,11 @@ GEN_CMDS__FLAG :=
 ORDERED_OBJS += \
 "./Timer.obj" \
 "./button.obj" \
-"./lab9.obj" \
+"./lab10.obj" \
 "./lcd.obj" \
 "./open_interface.obj" \
 "./ping.obj" \
+"./servo.obj" \
 "./tm4c123gh6pm_startup_ccs.obj" \
 "./uart.obj" \
 "../libcybotScan.lib" \
@@ -151,8 +152,8 @@ Lab10.out: $(OBJS) $(CMD_SRCS) $(LIB_SRCS) $(GEN_CMDS)
 # Other Targets
 clean:
 	-$(RM) $(EXE_OUTPUTS__QUOTED)
-	-$(RM) "Timer.obj" "button.obj" "lab9.obj" "lcd.obj" "open_interface.obj" "ping.obj" "tm4c123gh6pm_startup_ccs.obj" "uart.obj" 
-	-$(RM) "Timer.d" "button.d" "lab9.d" "lcd.d" "open_interface.d" "ping.d" "tm4c123gh6pm_startup_ccs.d" "uart.d" 
+	-$(RM) "Timer.obj" "button.obj" "lab10.obj" "lcd.obj" "open_interface.obj" "ping.obj" "servo.obj" "tm4c123gh6pm_startup_ccs.obj" "uart.obj" 
+	-$(RM) "Timer.d" "button.d" "lab10.d" "lcd.d" "open_interface.d" "ping.d" "servo.d" "tm4c123gh6pm_startup_ccs.d" "uart.d" 
 	-@echo 'Finished clean'
 	-@echo ' '
 

@@ -5,63 +5,76 @@
 SHELL = cmd.exe
 
 # Add inputs and outputs from these tool invocations to the build variables 
+CMD_SRCS += \
+../tm4c123gh6pm.cmd 
+
+LIB_SRCS += \
+../libcybotScan.lib \
+../libcybotUART.lib 
+
 C_SRCS += \
 ../Timer.c \
 ../button.c \
-../lab9.c \
+../lab10.c \
 ../lcd.c \
 ../open_interface.c \
 ../ping.c \
+../servo.c \
 ../tm4c123gh6pm_startup_ccs.c \
 ../uart.c 
-
-OBJS += \
-./Timer.o \
-./button.o \
-./lab9.o \
-./lcd.o \
-./open_interface.o \
-./ping.o \
-./tm4c123gh6pm_startup_ccs.o \
-./uart.o 
 
 C_DEPS += \
 ./Timer.d \
 ./button.d \
-./lab9.d \
+./lab10.d \
 ./lcd.d \
 ./open_interface.d \
 ./ping.d \
+./servo.d \
 ./tm4c123gh6pm_startup_ccs.d \
 ./uart.d 
+
+OBJS += \
+./Timer.obj \
+./button.obj \
+./lab10.obj \
+./lcd.obj \
+./open_interface.obj \
+./ping.obj \
+./servo.obj \
+./tm4c123gh6pm_startup_ccs.obj \
+./uart.obj 
+
+OBJS__QUOTED += \
+"Timer.obj" \
+"button.obj" \
+"lab10.obj" \
+"lcd.obj" \
+"open_interface.obj" \
+"ping.obj" \
+"servo.obj" \
+"tm4c123gh6pm_startup_ccs.obj" \
+"uart.obj" 
 
 C_DEPS__QUOTED += \
 "Timer.d" \
 "button.d" \
-"lab9.d" \
+"lab10.d" \
 "lcd.d" \
 "open_interface.d" \
 "ping.d" \
+"servo.d" \
 "tm4c123gh6pm_startup_ccs.d" \
 "uart.d" 
-
-OBJS__QUOTED += \
-"Timer.o" \
-"button.o" \
-"lab9.o" \
-"lcd.o" \
-"open_interface.o" \
-"ping.o" \
-"tm4c123gh6pm_startup_ccs.o" \
-"uart.o" 
 
 C_SRCS__QUOTED += \
 "../Timer.c" \
 "../button.c" \
-"../lab9.c" \
+"../lab10.c" \
 "../lcd.c" \
 "../open_interface.c" \
 "../ping.c" \
+"../servo.c" \
 "../tm4c123gh6pm_startup_ccs.c" \
 "../uart.c" 
 
