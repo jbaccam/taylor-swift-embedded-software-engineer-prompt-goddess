@@ -147,7 +147,9 @@ float ping_getDistance(void)
     }
 
     // Convert to distance in cm
-    float distance = time * 0.0010625;
+    float distance;
+
+    distance = time * 0.0010625;
 
     return distance;
 }

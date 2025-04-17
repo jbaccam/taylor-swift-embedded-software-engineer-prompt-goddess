@@ -1,33 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="TIMER3_TBILR_R "/>
+		<item key="selection" value="bump_detected"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
-			<item value="TIMER3_TBILR_R "/>
-			<item value="falling_time"/>
-			<item value="rising_time"/>
-			<item value="TIMER"/>
-			<item value="TIMER3"/>
-			<item value="timer_wait"/>
-			<item value="dir"/>
-			<item value="1.0"/>
-			<item value="- 1.0"/>
+			<item value="bump_detected"/>
+			<item value="Turning left"/>
+			<item value="turning left"/>
+			<item value="�"/>
+			<item value="go_to"/>
+			<item value="Rescanning"/>
+			<item value="sensor_data"/>
+			<item value="old-move"/>
+			<item value="move_forward_smart"/>
+			<item value="2"/>
+			<item value="bump"/>
+			<item value="both"/>
+			<item value="go_to_position"/>
+			<item value="rescan_needed"/>
 			<item value="distance"/>
-			<item value="- 10"/>
-			<item value="10"/>
-			<item value="adc"/>
-			<item value="mm"/>
-			<item value="stop"/>
 		</list>
 		<list key="replacehistory">
+			<item value=""/>
 			<item value="g_end_time "/>
 			<item value="g_start_time "/>
-			<item value=""/>
 			<item value=" degrees"/>
 			<item value="moving_median_filter_3"/>
 			<item value="filtered"/>
@@ -35,8 +35,8 @@
 		</list>
 	</section>
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
-		<item key="DIALOG_X_ORIGIN" value="157"/>
-		<item key="DIALOG_Y_ORIGIN" value="405"/>
+		<item key="DIALOG_X_ORIGIN" value="449"/>
+		<item key="DIALOG_Y_ORIGIN" value="434"/>
 		<item key="DIALOG_WIDTH" value="322"/>
 		<item key="DIALOG_HEIGHT" value="391"/>
 		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-12|0|0|0|400|0|0|0|1|0|0|5|0|Segoe UI"/>

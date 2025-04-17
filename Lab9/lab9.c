@@ -38,7 +38,7 @@ int main(void) {
         // Get the distance measurement
         float distance_cm = ping_getDistance();
 
-        distance_cm =* 0.0010025;
+        distance_cm = distance_cm * 0.0010025;
         // Get pulse information using helper functions
         unsigned int pulse_width_cycles = ping_getPulseTime();
         float pulse_width_ms = ping_getPulseMillis();
