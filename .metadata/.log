@@ -9929,3 +9929,15 @@ java.lang.IllegalStateException: Disconnected before saving. Please post stacktr
 !ENTRY com.ti.ccstudio.debug 1 0 2025-04-25 14:00:14.624
 !MESSAGE DS_ERROR: CORTEX_M4_0: GEL: Encountered a problem loading file: U:\CprE288Workspace\finalproj\Debug\finalproj.out Could not open file
 
+
+!ENTRY com.ti.ccstudio.debug 1 0 2025-04-25 14:00:38.935
+!MESSAGE DS_ERROR: CORTEX_M4_0: Trouble Reading Memory Block at 0x7cfff64f on Page 0 of Length 0x4: Debug Port error occurred.
+
+
+!ENTRY com.ti.ccstudio.debug 1 0 2025-04-25 14:01:02.925
+!MESSAGE DS_ERROR: CORTEX_M4_0: Error: Debug Port error occurred.
+
+
+!ENTRY com.ti.ccstudio.debug 1 0 2025-04-25 14:01:02.925
+!MESSAGE DS_ERROR: CORTEX_M4_0: Trouble Halting Target CPU 
+
