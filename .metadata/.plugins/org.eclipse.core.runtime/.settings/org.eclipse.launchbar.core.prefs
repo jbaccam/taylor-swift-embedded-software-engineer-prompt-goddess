@@ -2,7 +2,7 @@ LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/arch
 LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/name=Local
 LaunchTargetManager/org.eclipse.launchbar.core.launchTargetType.local,Local/os=win32
 activeLaunchTarget=null\:---
-configDescList=org.eclipse.launchbar.core.descriptorType.default\:Lab10
+configDescList=org.eclipse.launchbar.core.descriptorType.default\:finalproj
 eclipse.preferences.version=1
 org.eclipse.launchbar.core.descriptorType.default\:Bot_Calibration/activeLaunchMode=run
 org.eclipse.launchbar.core.descriptorType.default\:Bot_Calibration/activeLaunchTarget=org.eclipse.launchbar.core.launchTargetType.local\:Local
@@ -13,3 +13,5 @@ org.eclipse.launchbar.core.descriptorType.default\:Lab3/activeLaunchMode=debug
 org.eclipse.launchbar.core.descriptorType.default\:Lab5/activeLaunchMode=debug
 org.eclipse.launchbar.core.descriptorType.default\:Lab6/activeLaunchMode=debug
 org.eclipse.launchbar.core.descriptorType.default\:Lab6/activeLaunchTarget=org.eclipse.launchbar.core.launchTargetType.local\:Local
+org.eclipse.launchbar.core.descriptorType.default\:finalproj/activeLaunchMode=debug
+org.eclipse.launchbar.core.descriptorType.default\:finalproj/activeLaunchTarget=org.eclipse.launchbar.core.launchTargetType.local\:Local
