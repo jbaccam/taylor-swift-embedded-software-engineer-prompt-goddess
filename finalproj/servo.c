@@ -10,8 +10,8 @@
 
 // Calibration values for the servo
 // Default values - these will be overwritten by calibration
-int right_calibration_value = 7000;
-int left_calibration_value = 36000;
+int right_calibration_value = 7500;
+int left_calibration_value = 35750;
 
 void servo_init(void)
 {

@@ -50,4 +50,7 @@ void uart_sendStr(const char *data);
 // Interrupt handler for receive interrupts
 void UART1_Handler(void);
 
+// Non blocking function
+char uart_receive_nonblocking(void);
+
 #endif /* UART_H_ */

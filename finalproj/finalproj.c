@@ -1,521 +1,527 @@
 /*
- * finalproj.c - Mars Rover (CyBot) Implementation based on Lab 7
- *
- * Comprehensive implementation matching Lab 7:
- * - Scans environment using servo and sensors
- * - Filters and processes sensor data
- * - Detects objects using edge detection
- * - Identifies the smallest width object
- * - Navigates to the smallest object
- *
- * Created on: Apr 25, 2025
- * Author: Team SE2 "Ping Patrol"
+ * mars_rover.c - Team SE2 "Ping Patrol" Mars Rover Implementation
+ * 
+ * Manual navigation control with:
+ * - Obstacle detection and avoidance
+ * - Water sample detection with spin reaction
+ * - Boundary detection and adherence
+ * - Object scanning and reporting
+ * - Current orientation tracking
+ * 
+ * Created: April 27, 2025
+ * Authors: Jeremiah (Jay), Luke, Gavin, Judson, Benjamin
  */
 
-#include "adc.h"
-#include "timer.h"
-#include "lcd.h"
-#include "uart.h"
-#include "open_interface.h"
-#include "ping.h"
-#include "servo.h"
-#include "button.h"
-#include <math.h>
-#include <stdbool.h>
-#include <string.h>
-
-// Constants for scanning
-#define MIN_ANGLE 0
-#define MAX_ANGLE 180
-#define STEP 2                    // Scan every 2 degrees
-#define NUM_POINTS (((MAX_ANGLE - MIN_ANGLE) / STEP) + 1)
-
-// Thresholds for edge detection
-#define IR_THRESHOLD 400          // Threshold for IR value differences
-#define MIN_OBJECT_WIDTH 6.0f     // Minimum width in degrees to consider as an object
-#define BOUNDARY_MARGIN 10        // Ignore objects with edges this close to scan limits
-
-// Function prototypes
-void get_angle_array(float *angles);
-void scan_all_angles(float *angles, float *ping_values, int *ir_values);
-void filter_sensor_data(float *ping_values, int *ir_values, float *ping_filtered, int *ir_filtered);
-float median_of_3_float(float a, float b, float c);
-int median_of_3_int(int a, int b, int c);
-void compute_ir_diff(int *ir_filtered, int *ir_diff);
-void detect_objects(float *angles, float *ping_filtered, int *ir_filtered, int *ir_diff);
-float calculate_linear_width(float radialWidth, float distance);
-void navigate_to_smallest_object(oi_t *sensor_data);
-
-// Object information structure
-typedef struct {
-    float startAngle;
-    float endAngle;
-    float centerAngle;
-    float radialWidth;
-    float distance;
-    float linearWidth;
-} Object;
-
-#define MAX_OBJECTS 10
-Object objects[MAX_OBJECTS];
-int objectCount = 0;
-
-void main(void)
-{
-    // Initialize hardware components
-    timer_init();
-    lcd_init();
-    uart_interrupt_init();
-    adc_init();
-    ping_init();
-    servo_init();
-    button_init();
-
-    // Initialize CyBot
-    oi_t *sensor_data = oi_alloc();
-    oi_init(sensor_data);
-
-    // Display welcome message
-    lcd_printf("Mars Rover\nInitialized");
-
-    // UART communication
-    char toPutty[100];
-    sprintf(toPutty, "=== Mars Rover - Lab 7 Implementation ===\r\n");
-    uart_sendStr(toPutty);
-    sprintf(toPutty, "Press Enter to begin scanning\r\n");
-    uart_sendStr(toPutty);
-
-    // Wait for user to press Enter
-    char inputCharacter;
-    do {
-        inputCharacter = uart_receive();
-    } while (inputCharacter != '\r');
-
-    // Perform scan and navigation
-    navigate_to_smallest_object(sensor_data);
-
-    // End program
-    oi_free(sensor_data);
-}
-
-/**
- * Main navigation function that finds and goes to the smallest width object
- */
-void navigate_to_smallest_object(oi_t *sensor_data)
-{
-    char buffer[100];
-    objectCount = 0;
-
-    // Arrays for storing data
-    float angles[NUM_POINTS];
-    float ping_values[NUM_POINTS];
-    float ping_filtered[NUM_POINTS];
-    int ir_values[NUM_POINTS];
-    int ir_filtered[NUM_POINTS];
-    int ir_diff[NUM_POINTS];
-
-    sprintf(buffer, "Performing initial scan...\r\n");
-    uart_sendStr(buffer);
-
-    // Get angles array
-    get_angle_array(angles);
-
-    // Perform full scan
-    scan_all_angles(angles, ping_values, ir_values);
-
-    // Filter data
-    filter_sensor_data(ping_values, ir_values, ping_filtered, ir_filtered);
-
-    // Compute differences
-    compute_ir_diff(ir_filtered, ir_diff);
-
-    // Detect objects
-    detect_objects(angles, ping_filtered, ir_filtered, ir_diff);
-
-    // If no objects found, report and exit
-    if (objectCount == 0) {
-        sprintf(buffer, "No objects detected.\r\n");
-        uart_sendStr(buffer);
-        return;
-    }
-
-    // Find the object with the smallest linear width
-    int smallestIndex = 0;
-    float smallestWidth = objects[0].linearWidth;
-    int i;
-    for (i = 1; i < objectCount; i++) {
-        if (objects[i].linearWidth < smallestWidth) {
-            smallestWidth = objects[i].linearWidth;
-            smallestIndex = i;
-        }
-    }
-
-    // Get target position
-    float targetAngle = objects[smallestIndex].centerAngle;
-    float targetDistance = objects[smallestIndex].distance;
-
-    // Display information about the target
-    sprintf(buffer, "Found smallest object (Object %d):\r\n", smallestIndex + 1);
-    uart_sendStr(buffer);
-
-    sprintf(buffer, "  - Center angle: %.1f degrees\r\n", targetAngle);
-    uart_sendStr(buffer);
-
-    sprintf(buffer, "  - Distance: %.1f cm\r\n", targetDistance);
-    uart_sendStr(buffer);
-
-    sprintf(buffer, "  - Linear width: %.1f cm\r\n\r\n", objects[smallestIndex].linearWidth);
-    uart_sendStr(buffer);
-
-    sprintf(buffer, "Navigating to smallest object...\r\n");
-    uart_sendStr(buffer);
-
-    // Move to the object
-    lcd_printf("Moving to obj\nAngle: %.1f\nDist: %.1f", targetAngle, targetDistance);
-
-    // Turn to face object
-    if (targetAngle < 90) {
-        // Turn right
-        sprintf(buffer, "Turning right to angle %.1f...\r\n", targetAngle);
-        uart_sendStr(buffer);
-        oi_setWheels(-50, 50);
-        timer_waitMillis((90 - targetAngle) * 20);  // Simple time-based turning
-    } else if (targetAngle > 90) {
-        // Turn left
-        sprintf(buffer, "Turning left to angle %.1f...\r\n", targetAngle);
-        uart_sendStr(buffer);
-        oi_setWheels(50, -50);
-        timer_waitMillis((targetAngle - 90) * 20);  // Simple time-based turning
-    }
-
-    // Stop turning
-    oi_setWheels(0, 0);
-    timer_waitMillis(500);
-
-    // Move toward object (stopping 10cm away for safety)
-    if (targetDistance > 15) {
-        sprintf(buffer, "Moving forward %.1fcm...\r\n", targetDistance - 15);
-        uart_sendStr(buffer);
-
-        // Convert distance to movement time (simple approximation)
-        int travel_distance = (targetDistance - 15) * 10;  // Distance in mm
-        int travel_time = travel_distance / 50;            // Time at ~50mm/s
-
-        // Move forward
-        oi_setWheels(100, 100);
-        timer_waitMillis(travel_time);
-    }
-
-    // Stop moving
-    oi_setWheels(0, 0);
-
-    // Complete
-    sprintf(buffer, "Reached destination!\r\n");
-    uart_sendStr(buffer);
-    lcd_printf("Destination\nreached");
-}
-
-// Populate the angles[] array from MIN_ANGLE to MAX_ANGLE in STEP increments
-void get_angle_array(float *angles)
-{
-    float angleVal = MIN_ANGLE;
-    int i;
-    for (i = 0; i < NUM_POINTS; i++) {
-        angles[i] = angleVal;
-        angleVal += STEP;
-    }
-}
-
-// Perform a full scan and collect ping and IR data at each angle
-void scan_all_angles(float *angles, float *ping_values, int *ir_values)
-{
-    char buffer[100];
-
-    sprintf(buffer, "Scanning...\r\n");
-    uart_sendStr(buffer);
-    sprintf(buffer, "Angle\tDistance\tIR Value\r\n");
-    uart_sendStr(buffer);
-
-    // Perform scan from MIN_ANGLE to MAX_ANGLE in STEP increments
-    int i;
-    for (i = 0; i < NUM_POINTS; i++) {
-        int angle = (int)angles[i];
-
-        // Move servo to position
-        servo_move(angle);
-        timer_waitMillis(50);  // Give servo time to reach position
-
-        // Get sensor readings
-        ping_trigger();
-        ping_values[i] = ping_getDistance();
-        ir_values[i] = adc_read();
-
-        // Display data for ALL angles
-        sprintf(buffer, "%d\t%.1f\t%d\r\n", angle, ping_values[i], ir_values[i]);
-        uart_sendStr(buffer);
-    }
-
-    sprintf(buffer, "\r\n");
-    uart_sendStr(buffer);
-}
-
-// Apply median filters to both ping and IR data to reduce noise
-void filter_sensor_data(float *ping_values, int *ir_values, float *ping_filtered, int *ir_filtered)
-{
-    char buffer[100];
-    sprintf(buffer, "Filtering sensor data...\r\n");
-    uart_sendStr(buffer);
-
-    // Copy boundaries directly (no filtering for first and last points)
-    ping_filtered[0] = ping_values[0];
-    ping_filtered[NUM_POINTS - 1] = ping_values[NUM_POINTS - 1];
-
-    ir_filtered[0] = ir_values[0];
-    ir_filtered[NUM_POINTS - 1] = ir_values[NUM_POINTS - 1];
-
-    // Apply median filter of 3 to interior points
-    int i;
-    for (i = 1; i < NUM_POINTS - 1; i++) {
-        // Ping filter (float values)
-        ping_filtered[i] = median_of_3_float(
-            ping_values[i - 1],
-            ping_values[i],
-            ping_values[i + 1]
-        );
-
-        // IR filter (integer values)
-        ir_filtered[i] = median_of_3_int(
-            ir_values[i - 1],
-            ir_values[i],
-            ir_values[i + 1]
-        );
-    }
-
-    sprintf(buffer, "Filtering complete.\r\n\r\n");
-    uart_sendStr(buffer);
-}
-
-// Median filter for float values (ping distances)
-float median_of_3_float(float a, float b, float c)
-{
-    if (a > b) {
-        if (b > c) return b;       // a > b > c
-        else if (a > c) return c;  // a > c >= b
-        else return a;             // c >= a > b
-    }
-    else {
-        if (a > c) return a;       // b >= a > c
-        else if (b > c) return c;  // b > c >= a
-        else return b;             // c >= b >= a
-    }
-}
-
-// Median filter for integer values (IR readings)
-int median_of_3_int(int a, int b, int c)
-{
-    if (a > b) {
-        if (b > c) return b;       // a > b > c
-        else if (a > c) return c;  // a > c >= b
-        else return a;             // c >= a > b
-    }
-    else {
-        if (a > c) return a;       // b >= a > c
-        else if (b > c) return c;  // b > c >= a
-        else return b;             // c >= b >= a
-    }
-}
-
-// Compute differences between consecutive IR readings for edge detection
-void compute_ir_diff(int *ir_filtered, int *ir_diff)
-{
-    ir_diff[0] = 0;  // First element has no difference
-    int i;
-    for (i = 1; i < NUM_POINTS; i++) {
-        ir_diff[i] = ir_filtered[i] - ir_filtered[i - 1];
-    }
-}
-
-// Detect objects using edge detection on IR values
-void detect_objects(float *angles, float *ping_filtered, int *ir_filtered, int *ir_diff)
-{
-    char buffer[100];
-    sprintf(buffer, "Detecting objects...\r\n\r\n");
-    uart_sendStr(buffer);
-
-    objectCount = 0;
-
-    // Parameters for edge detection
-    int EDGE_THRESHOLD = IR_THRESHOLD / 4;  // Threshold for edge detection
-
-    // Track object detection state
-    bool inObject = false;
-    int startIndex = 0;
-    int i;
-
-    // Detect edges based on ir_diff values
-    for (i = 1; i < NUM_POINTS - 1; i++) {
-        // Start of object: rising edge (positive diff exceeds threshold)
-        if (!inObject && ir_diff[i] > EDGE_THRESHOLD) {
-            startIndex = i;
-            inObject = true;
-
-            sprintf(buffer, "Leading edge detected at angle %.1f (IR diff: %d)\r\n",
-                   angles[i], ir_diff[i]);
-            uart_sendStr(buffer);
-        }
-        // End of object: falling edge (negative diff exceeds threshold)
-        else if (inObject && ir_diff[i] < -EDGE_THRESHOLD) {
-            int endIndex = i - 1;
-            inObject = false;
-
-            sprintf(buffer, "Trailing edge detected at angle %.1f (IR diff: %d)\r\n",
-                   angles[i], ir_diff[i]);
-            uart_sendStr(buffer);
-
-            // Calculate object properties
-            float startAngle = angles[startIndex];
-            float endAngle = angles[endIndex];
-            float radialWidth = endAngle - startAngle;
-            float centerAngle = (startAngle + endAngle) / 2.0f;
-
-            // Skip objects that are too narrow (likely noise)
-            if (radialWidth < MIN_OBJECT_WIDTH) {
-                sprintf(buffer, "Object too narrow (%.1f deg), skipping...\r\n", radialWidth);
-                uart_sendStr(buffer);
-                continue;
-            }
-
-            // Find minimum ping distance within object boundaries
-            float minDist = 999.0f;
-            int j;
-            for (j = startIndex; j <= endIndex; j++) {
-                if (ping_filtered[j] < minDist && ping_filtered[j] > 0) {
-                    minDist = ping_filtered[j];
-                }
-            }
-
-            // Calculate linear width using trigonometry
-            float linearWidth = calculate_linear_width(radialWidth, minDist);
-
-            // Store the object if we have space
-            if (objectCount < MAX_OBJECTS) {
-                objects[objectCount].startAngle = startAngle;
-                objects[objectCount].endAngle = endAngle;
-                objects[objectCount].centerAngle = centerAngle;
-                objects[objectCount].radialWidth = radialWidth;
-                objects[objectCount].distance = minDist;
-                objects[objectCount].linearWidth = linearWidth;
-
-                // Display object info
-                sprintf(buffer, "Object %d:\r\n", objectCount + 1);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Start angle: %.1f\r\n", startAngle);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - End angle: %.1f\r\n", endAngle);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Center angle: %.1f\r\n", centerAngle);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Radial width: %.1f degrees\r\n", radialWidth);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Distance: %.1f cm\r\n", minDist);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Linear width: %.1f cm\r\n\r\n", linearWidth);
-                uart_sendStr(buffer);
-
-                objectCount++;
-            }
-        }
-    }
-
-    // If we ended while still in an object
-    if (inObject) {
-        int endIndex = NUM_POINTS - 1;
-        float startAngle = angles[startIndex];
-        float endAngle = angles[endIndex];
-        float radialWidth = endAngle - startAngle;
-
-        // Skip objects that are too narrow
-        if (radialWidth >= MIN_OBJECT_WIDTH) {
-            float centerAngle = (startAngle + endAngle) / 2.0f;
-
-            // Find minimum ping distance within object
-            float minDist = 999.0f;
-            int j;
-            for (j = startIndex; j <= endIndex; j++) {
-                if (ping_filtered[j] < minDist && ping_filtered[j] > 0) {
-                    minDist = ping_filtered[j];
-                }
-            }
-
-            // Calculate linear width
-            float linearWidth = calculate_linear_width(radialWidth, minDist);
-
-            // Store the object if we have space
-            if (objectCount < MAX_OBJECTS) {
-                objects[objectCount].startAngle = startAngle;
-                objects[objectCount].endAngle = endAngle;
-                objects[objectCount].centerAngle = centerAngle;
-                objects[objectCount].radialWidth = radialWidth;
-                objects[objectCount].distance = minDist;
-                objects[objectCount].linearWidth = linearWidth;
-
-                // Display object info
-                sprintf(buffer, "Object %d (end of scan):\r\n", objectCount + 1);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Start angle: %.1f\r\n", startAngle);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - End angle: %.1f\r\n", endAngle);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Center angle: %.1f\r\n", centerAngle);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Radial width: %.1f degrees\r\n", radialWidth);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Distance: %.1f cm\r\n", minDist);
-                uart_sendStr(buffer);
-
-                sprintf(buffer, "  - Linear width: %.1f cm\r\n\r\n", linearWidth);
-                uart_sendStr(buffer);
-
-                objectCount++;
-            }
-        }
-    }
-
-    // Summary of detected objects
-    if (objectCount > 0) {
-        sprintf(buffer, "Object Summary:\r\n");
-        uart_sendStr(buffer);
-
-        for (i = 0; i < objectCount; i++) {
-            sprintf(buffer, "Obj %d | Center: %3.1f | Distance: %5.1f | Linear Width: %5.1f\r\n",
-                   i+1, objects[i].centerAngle, objects[i].distance, objects[i].linearWidth);
-            uart_sendStr(buffer);
-        }
-        sprintf(buffer, "\r\n");
-        uart_sendStr(buffer);
-    } else {
-        sprintf(buffer, "No objects detected.\r\n\r\n");
-        uart_sendStr(buffer);
-    }
-}
-
-// Calculate linear width using trigonometry: 2 * distance * sin(angle/2)
-float calculate_linear_width(float radialWidth, float distance)
-{
-    // Convert from degrees to radians
-    float radialWidth_rad = radialWidth * (M_PI / 180.0f);
-
-    // Calculate width using 2 * distance * sin(angle/2)
-    return 2.0f * distance * sin(radialWidth_rad / 2.0f);
-}
+ #include "Timer.h"
+ #include "lcd.h"
+ #include "uart.h"
+ #include "open_interface.h"
+ #include "ping.h"
+ #include "servo.h"
+ #include "adc.h"
+ #include "movement.h"
+ #include <math.h>
+ #include <stdbool.h>
+ #include <string.h>
+ 
+ // constants for detection
+ #define BLUE_THRESHOLD 2800    // threshold for blue paper detection (needs calibration)
+ #define IR_THRESHOLD 400       // threshold for IR object detection
+ #define SCAN_STEP 2            // scan every 2 degrees
+ 
+ // function prototypes
+ void initialize_hardware(void);
+ void manual_mode(oi_t *sensor_data);
+ bool check_for_water_sample(oi_t *sensor_data);
+ void spin_for_water_sample(oi_t *sensor_data);
+ bool check_for_cliff(oi_t *sensor_data);
+ void update_orientation_display(float current_angle);
+ 
+ // global variables
+ float current_orientation = 90.0; // initial orientation (90 = forward)
+ 
+ int main(void) {
+     // initialize hardware components
+     initialize_hardware();
+     
+     // initialize the cybot
+     oi_t *sensor_data = oi_alloc();
+     oi_init(sensor_data);
+     
+     // display welcome message
+     lcd_printf("Mars Rover\nInitialized");
+     
+     char toPutty[100];
+     sprintf(toPutty, "=== Mars Rover - Team Ping Patrol ===\r\n");
+     uart_sendStr(toPutty);
+     sprintf(toPutty, "Manual control mode active\r\n");
+     uart_sendStr(toPutty);
+     sprintf(toPutty, "Current orientation: %.1f degrees\r\n", current_orientation);
+     uart_sendStr(toPutty);
+     sprintf(toPutty, "Controls:\r\n");
+     uart_sendStr(toPutty);
+     sprintf(toPutty, "  w - forward 5cm\r\n  s - backward 5cm\r\n  a - turn CCW 10°\r\n  d - turn CW 10°\r\n");
+     uart_sendStr(toPutty);
+     sprintf(toPutty, "  m - 180° scan\r\n  n - 360° scan\r\n");
+     uart_sendStr(toPutty);
+     
+     // start in manual mode
+     manual_mode(sensor_data);
+     
+     // clean up
+     oi_free(sensor_data);
+     return 0;
+ }
+ 
+ // initialize all hardware components
+ void initialize_hardware(void) {
+     timer_init();
+     lcd_init();
+     uart_init();
+     adc_init();
+     ping_init();
+     servo_init();
+ }
+ 
+ // display current orientation in putty
+ void update_orientation_display(float current_angle) {
+     char toPutty[100];
+     sprintf(toPutty, "Current orientation: %.1f degrees\r\n", current_angle);
+     uart_sendStr(toPutty);
+ }
+ 
+ // manual control mode with base station commands
+ void manual_mode(oi_t *sensor_data) {
+     int flag = 1;  // simple integer flag, 1 = true
+     int i, j, k;
+     float pingDistance;
+     int IRmeasurement;
+     char inputCharacter;
+     char toPutty[100];
+     
+     lcd_printf("Manual Mode");
+     
+     while (flag == 1) {
+         i = 0;
+         j = 0;
+         k = 0;
+         
+         // check for emergency conditions
+         oi_update(sensor_data);
+         
+         // Check for bumps - halt immediately if detected
+         if (sensor_data->bumpLeft) {
+             // Emergency stop
+             oi_setWheels(0, 0);
+             sprintf(toPutty, "\r\n*** LEFT BUMPER TRIGGERED! EMERGENCY STOP ***\r\n");
+             uart_sendStr(toPutty);
+             
+             // Back up slightly for safety
+             move_backwards(sensor_data, 5);
+             
+             // Update status
+             sprintf(toPutty, "Backed up 5cm for safety. Please choose a new direction.\r\n");
+             uart_sendStr(toPutty);
+             update_orientation_display(current_orientation);
+             continue;
+         }
+         
+         if (sensor_data->bumpRight) {
+             // Emergency stop
+             oi_setWheels(0, 0);
+             sprintf(toPutty, "\r\n*** RIGHT BUMPER TRIGGERED! EMERGENCY STOP ***\r\n");
+             uart_sendStr(toPutty);
+             
+             // Back up slightly for safety
+             move_backwards(sensor_data, 5);
+             
+             // Update status
+             sprintf(toPutty, "Backed up 5cm for safety. Please choose a new direction.\r\n");
+             uart_sendStr(toPutty);
+             update_orientation_display(current_orientation);
+             continue;
+         }
+         
+         // Check for cliffs
+         if (check_for_cliff(sensor_data)) {
+             // Emergency stop
+             oi_setWheels(0, 0);
+             sprintf(toPutty, "\r\n*** CLIFF DETECTED! EMERGENCY STOP ***\r\n");
+             uart_sendStr(toPutty);
+             move_backwards(sensor_data, 10); // back up 10cm for safety
+             
+             // Update status
+             sprintf(toPutty, "Backed up 10cm for safety. Please choose a new direction.\r\n");
+             uart_sendStr(toPutty);
+             update_orientation_display(current_orientation);
+             continue;
+         }
+         
+         // Check for water samples (blue paper)
+         if (check_for_water_sample(sensor_data)) {
+             // Stop and collect sample
+             oi_setWheels(0, 0);
+             sprintf(toPutty, "\r\n*** WATER SAMPLE DETECTED! Collecting... ***\r\n");
+             uart_sendStr(toPutty);
+             spin_for_water_sample(sensor_data);
+             update_orientation_display(current_orientation);
+         }
+ 
+         // Check for manual commands using non-blocking UART
+         inputCharacter = uart_receive_nonblocking();
+         if (inputCharacter != 255) { // 255 means no character received
+             uart_sendChar(inputCharacter);
+             
+             if (inputCharacter == 'w') {
+                 // Move forward 5cm
+                 sprintf(toPutty, "\r\nMoving Forward 5cm.\r\n");
+                 uart_sendStr(toPutty);
+                 move_forward(sensor_data, 5);
+                 sprintf(toPutty, "Done Moving Forward.\r\n");
+                 uart_sendStr(toPutty);
+                 update_orientation_display(current_orientation);
+             }
+             else if (inputCharacter == 's') {
+                 // Move backward 5cm
+                 sprintf(toPutty, "\r\nMoving Backwards 5cm.\r\n");
+                 uart_sendStr(toPutty);
+                 move_backwards(sensor_data, 5);
+                 sprintf(toPutty, "Done Moving Backwards.\r\n");
+                 uart_sendStr(toPutty);
+                 update_orientation_display(current_orientation);
+             }
+             else if (inputCharacter == 'd') {
+                 // Turn clockwise 10 degrees
+                 sprintf(toPutty, "\r\nTurning Clockwise 10 Degrees.\r\n");
+                 uart_sendStr(toPutty);
+                 turn_clockwise(sensor_data, 10);
+                 
+                 // Update current orientation
+                 current_orientation -= 10;
+                 if (current_orientation < 0) {
+                     current_orientation += 360;
+                 }
+                 
+                 sprintf(toPutty, "Done Turning Clockwise.\r\n");
+                 uart_sendStr(toPutty);
+                 update_orientation_display(current_orientation);
+             }
+             else if (inputCharacter == 'a') {
+                 // Turn counterclockwise 10 degrees
+                 sprintf(toPutty, "\r\nTurning Counterclockwise 10 Degrees.\r\n");
+                 uart_sendStr(toPutty);
+                 turn_counterclockwise(sensor_data, 10);
+                 
+                 // Update current orientation
+                 current_orientation += 10;
+                 if (current_orientation >= 360) {
+                     current_orientation -= 360;
+                 }
+                 
+                 sprintf(toPutty, "Done Turning Counterclockwise.\r\n");
+                 uart_sendStr(toPutty);
+                 update_orientation_display(current_orientation);
+             }
+             else if (inputCharacter == 'm') {
+                 // Perform 180-degree scan
+                 oi_setWheels(0, 0);
+                 
+                 sprintf(toPutty, "\r\nBeginning 180 Degree Scan.\r\n");
+                 uart_sendStr(toPutty);
+                 
+                 int sensorAngle[80] = {0};        // angles where objects are detected
+                 float sensorDistance[80] = {0};   // distances to objects
+                 
+                 sprintf(toPutty, "Degrees\tDistance (cm)\n\r");
+                 uart_sendStr(toPutty);
+                 
+                 // Perform the scan
+                 for (i = 0; i <= 180; i = i + SCAN_STEP) {
+                     servo_move(i);
+                     pingDistance = ping_read();
+                     IRmeasurement = adc_read();
+                     
+                     if (IRmeasurement > IR_THRESHOLD) {
+                         sprintf(toPutty, "%d\t%f\n\r", i, pingDistance);
+                         uart_sendStr(toPutty);
+                         
+                         sensorAngle[k] = i;
+                         sensorDistance[k] = pingDistance;
+                         k++;
+                     }
+                     j = 0;
+                 }
+                 
+                 // Analyze detected objects (same as your paste code)
+                 int avgAngle[10] = {0};     // average angle of objects
+                 float avgDist[10] = {0};    // average distance to objects
+                 int width[10] = {0};        // angular width of objects
+                 int l = 0;                  // counter for objects
+                 float StartDist[10] = {0};  // distance at start angle
+                 float EndDist[10] = {0};    // distance at end angle
+                 
+                 // Process object data - this is from your existing code
+                 // It finds distinct objects and calculates their properties
+                 for (i = 1; i <= k; i++) {
+                     if (StartDist[l] == 0) {
+                         StartDist[l] = sensorDistance[i];
+                     }
+                     if (sensorAngle[i] - sensorAngle[i-1] <= 4 && i != k) {
+                         if (sensorAngle[i] - sensorAngle[i-1] == 4) {
+                             j = j + 4;
+                             avgAngle[l] = avgAngle[l] + 4*sensorAngle[i];
+                             avgDist[l] = avgDist[l] + 4*sensorDistance[i];
+                             EndDist[l] = sensorDistance[i];
+                         }
+                         else {
+                             j = j + 2;
+                             avgAngle[l] = avgAngle[l] + 2*sensorAngle[i];
+                             avgDist[l] = avgDist[l] + 2*sensorDistance[i];
+                             EndDist[l] = sensorDistance[i];
+                         }
+                     }
+                     else {
+                         if (j <= 2) {
+                             j = 0;
+                             avgAngle[l] = 0;
+                             avgDist[l] = 0;
+                             StartDist[l] = 0;
+                         }
+                         else {
+                             width[l] = j;
+                             avgAngle[l] = avgAngle[l] / j;
+                             avgDist[l] = avgDist[l] / j;
+                             j = 0;
+                             l++;
+                         }
+                     }
+                 }
+                 
+                 // Calculate linear width using Law of Cosines
+                 float LinearWidth[10] = {0};
+                 for (i = 0; i < l; i++) {
+                     LinearWidth[i] = sqrt(pow(StartDist[i], 2) + pow(EndDist[i], 2) - 
+                                       2*StartDist[i]*EndDist[i]*cos((width[i])*(M_PI / 180)));
+                 }
+                 
+                 // Display results
+                 sprintf(toPutty, "\n\r*** OBJECT DETECTION RESULTS ***\r\n");
+                 uart_sendStr(toPutty);
+                 sprintf(toPutty, "Objects found: %d\r\n", l);
+                 uart_sendStr(toPutty);
+                 sprintf(toPutty, "Object\tRel Angle\tAbs Angle\tDistance\tWidth\n\r");
+                 uart_sendStr(toPutty);
+                 
+                 for (i = 0; i < l; i++) {
+                     // Calculate absolute angle in the environment
+                     float absoluteAngle = fmod(current_orientation - 90 + avgAngle[i], 360);
+                     if (absoluteAngle < 0) absoluteAngle += 360;
+                     
+                     sprintf(toPutty, "%d\t%d°\t\t%.1f°\t\t%.1f cm\t%.1f cm\n\r", 
+                             i + 1, avgAngle[i], absoluteAngle, avgDist[i], LinearWidth[i]);
+                     uart_sendStr(toPutty);
+                 }
+                 
+                 // Return servo to center position
+                 servo_move(90);
+                 
+                 // Final status update
+                 sprintf(toPutty, "\r\nScan complete. Navigate based on objects shown above.\r\n");
+                 uart_sendStr(toPutty);
+                 update_orientation_display(current_orientation);
+             }
+             else if (inputCharacter == 'n') {
+                 // This is same as your original n command from your paste
+                 oi_setWheels(0, 0);
+                 
+                 sprintf(toPutty, "\r\nBeginning 360 Degree Scan.\r\n");
+                 uart_sendStr(toPutty);
+                 
+                 int sensorAngle[80] = {0};
+                 float sensorDistance[80] = {0};
+                 
+                 sprintf(toPutty, "Degrees\tDistance (cm)\n\r");
+                 uart_sendStr(toPutty);
+                 
+                 // Scan 0-180 degrees
+                 for (i = 0; i <= 180; i = i + SCAN_STEP) {
+                     servo_move(i);
+                     pingDistance = ping_read();
+                     IRmeasurement = adc_read();
+                     
+                     if (IRmeasurement > IR_THRESHOLD) {
+                         sprintf(toPutty, "%d\t%f\n\r", i, pingDistance);
+                         uart_sendStr(toPutty);
+                         
+                         sensorAngle[k] = i;
+                         sensorDistance[k] = pingDistance;
+                         k++;
+                     }
+                     j = 0;
+                 }
+                 
+                 // Turn robot 180 degrees
+                 autoturn_clockwise(sensor_data, 180);
+                 
+                 // Update orientation after turning
+                 current_orientation -= 180;
+                 if (current_orientation < 0) {
+                     current_orientation += 360;
+                 }
+                 
+                 // Scan second 180 degrees
+                 for (i = 2; i <= 180; i = i + SCAN_STEP) {
+                     servo_move(i);
+                     pingDistance = ping_read();
+                     IRmeasurement = adc_read();
+                     
+                     if (IRmeasurement > IR_THRESHOLD) {
+                         sprintf(toPutty, "%d\t%f\n\r", i + 180, pingDistance);
+                         uart_sendStr(toPutty);
+                         
+                         sensorAngle[k] = i + 180;
+                         sensorDistance[k] = pingDistance;
+                         k++;
+                     }
+                     j = 0;
+                 }
+                 
+                 // Object analysis - identical to your paste code
+                 int avgAngle[10] = {0};
+                 float avgDist[10] = {0};
+                 int width[10] = {0};
+                 int l = 0;
+                 float StartDist[10] = {0};
+                 float EndDist[10] = {0};
+                 
+                 for (i = 1; i <= k; i++) {
+                     if (StartDist[l] == 0) {
+                         StartDist[l] = sensorDistance[i];
+                     }
+                     if (sensorAngle[i] - sensorAngle[i-1] <= 4 && i != k) {
+                         if (sensorAngle[i] - sensorAngle[i-1] == 4) {
+                             j = j + 4;
+                             avgAngle[l] = avgAngle[l] + 4*sensorAngle[i];
+                             avgDist[l] = avgDist[l] + 4*sensorDistance[i];
+                             EndDist[l] = sensorDistance[i];
+                         }
+                         else {
+                             j = j + 2;
+                             avgAngle[l] = avgAngle[l] + 2*sensorAngle[i];
+                             avgDist[l] = avgDist[l] + 2*sensorDistance[i];
+                             EndDist[l] = sensorDistance[i];
+                         }
+                     }
+                     else {
+                         if (j <= 2) {
+                             j = 0;
+                             avgAngle[l] = 0;
+                             avgDist[l] = 0;
+                             StartDist[l] = 0;
+                         }
+                         else {
+                             width[l] = j;
+                             avgAngle[l] = avgAngle[l] / j;
+                             avgDist[l] = avgDist[l] / j;
+                             j = 0;
+                             l++;
+                         }
+                     }
+                 }
+                 
+                 float LinearWidth[10] = {0};
+                 for (i = 0; i < l; i++) {
+                     LinearWidth[i] = sqrt(pow(StartDist[i], 2) + pow(EndDist[i], 2) - 
+                                       2*StartDist[i]*EndDist[i]*cos((width[i])*(M_PI / 180)));
+                 }
+                 
+                 // Display results with absolute angles based on current orientation
+                 sprintf(toPutty, "\n\r*** OBJECT DETECTION RESULTS (360° SCAN) ***\r\n");
+                 uart_sendStr(toPutty);
+                 sprintf(toPutty, "Objects found: %d\r\n", l);
+                 uart_sendStr(toPutty);
+                 sprintf(toPutty, "Object\tRel Angle\tAbs Angle\tDistance\tWidth\n\r");
+                 uart_sendStr(toPutty);
+                 
+                 for (i = 0; i < l; i++) {
+                     // Calculate absolute angle in the environment
+                     float absoluteAngle = fmod(current_orientation - 90 + avgAngle[i], 360);
+                     if (absoluteAngle < 0) absoluteAngle += 360;
+                     
+                     sprintf(toPutty, "%d\t%d°\t\t%.1f°\t\t%.1f cm\t%.1f cm\n\r", 
+                             i + 1, avgAngle[i], absoluteAngle, avgDist[i], LinearWidth[i]);
+                     uart_sendStr(toPutty);
+                 }
+                 
+                 // Return robot to original orientation
+                 autoturn_clockwise(sensor_data, 180);
+                 
+                 // Update orientation after turning back
+                 current_orientation -= 180;
+                 if (current_orientation < 0) {
+                     current_orientation += 360;
+                 }
+                 
+                 // Center servo
+                 servo_move(90);
+                 
+                 // Final status update
+                 sprintf(toPutty, "\r\n360° Scan complete. Navigate based on objects shown above.\r\n");
+                 uart_sendStr(toPutty);
+                 update_orientation_display(current_orientation);
+             }
+         }
+         
+         // Small delay to prevent excessive CPU usage
+         timer_waitMillis(20);
+     }
+ }
+ 
+ // check for water samples (blue paper) using cliff sensors
+ bool check_for_water_sample(oi_t *sensor_data) {
+     // cliff sensors return high values for reflective surfaces
+     // blue paper should have a specific reflection signature
+     
+     // read cliff sensor signals (these are analog values, not binary cliff detection)
+     int left_cliff = sensor_data->cliffLeftSignal;
+     int front_left_cliff = sensor_data->cliffFrontLeftSignal;
+     int front_right_cliff = sensor_data->cliffFrontRightSignal;
+     int right_cliff = sensor_data->cliffRightSignal;
+     
+     // check if any sensor detects blue paper
+     // blue paper reflects IR differently than black surface or white tape
+     if (front_left_cliff > BLUE_THRESHOLD || front_right_cliff > BLUE_THRESHOLD) {
+         return true;
+     }
+     
+     return false;
+ }
+ 
+ // check for cliff/hole detection to prevent falling
+ bool check_for_cliff(oi_t *sensor_data) {
+     // cliff sensors return binary indication of cliff detection
+     if (sensor_data->cliffLeft || sensor_data->cliffFrontLeft || 
+         sensor_data->cliffFrontRight || sensor_data->cliffRight) {
+         return true;
+     }
+     return false;
+ }
+ 
+ // spin in place to simulate water sample collection
+ void spin_for_water_sample(oi_t *sensor_data) {
+     char toPutty[100];
+     
+     lcd_printf("Collecting\nWater Sample");
+     
+     // spin 360 degrees to simulate collection
+     sprintf(toPutty, "Spinning to collect water sample...\r\n");
+     uart_sendStr(toPutty);
+     
+     // turn clockwise 360 degrees
+     turn_clockwise(sensor_data, 360);
+     
+     // completion message
+     sprintf(toPutty, "Water sample collection complete!\r\n");
+     uart_sendStr(toPutty);
+     lcd_printf("Manual Mode");
+ }

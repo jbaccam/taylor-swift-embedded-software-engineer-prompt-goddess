@@ -70,7 +70,7 @@ void uart_interrupt_init(void){
 
 
     //NVIC setup: set priority of UART1 interrupt to 1 in bits 21-23 of PRI1 (page 153)
-    // PRI1 is a 32 bit register, and bits [23:21] control interrupt #6’s priority which is uart1
+    // PRI1 is a 32 bit register, and bits [23:21] control interruptï¿½#6ï¿½s priority which is uart1
     /*
      Each interrupt can be assigned priority level, when multiple interrupts go off,
      or one is running, the interrupt with a higher priority (lower number) will take over
@@ -83,7 +83,7 @@ void uart_interrupt_init(void){
     NVIC_PRI1_R = (NVIC_PRI1_R & 0xFF0FFFFF) | 0x00200000;
 
     //NVIC setup: enable interrupt for UART1, IRQ #6 => bit6 in EN0
-    // enable 0–31 register, bit 6 is for interrupt #6
+    // enable 0ï¿½31 register, bit 6 is for interrupt #6
     // this means the CPU will accept interrupt requests from UART1
     NVIC_EN0_R |= (1 << 6); //page 134
 
@@ -152,5 +152,16 @@ void UART1_Handler(void)
                 command_flag = 1; // let main know
             }
         }
+    }
+}
+
+// Non-blocking receive function - returns 255 if no data available
+char uart_receive_nonblocking(void) {
+    if ((UART0_FR_R & UART_FR_RXFE) != 0) {
+        // no data available
+        return 255;
+    } else {
+        // data is available
+        return (char)(UART0_DR_R & 0xFF);
     }
 }
