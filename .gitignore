@@ -1,1 +1,11 @@
 /.metadata/
+# CCS/Eclipse project metadata
+.launches/
+.settings/
+*.cproject
+*.ccsproject
+.project
+
+# Build output
+Debug/
+targetConfigs/
