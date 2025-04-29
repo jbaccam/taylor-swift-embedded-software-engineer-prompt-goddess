@@ -11,11 +11,16 @@ GEN_CMDS__FLAG :=
 
 ORDERED_OBJS += \
 "./Timer.obj" \
+"./adc.obj" \
+"./button.obj" \
 "./lcd.obj" \
 "./main.obj" \
 "./movement.obj" \
 "./open_interface.obj" \
+"./ping.obj" \
+"./servo.obj" \
 "./tm4c123gh6pm_startup_ccs.obj" \
+"./uart.obj" \
 "../libcybotScan.lib" \
 "../libcybotUART.lib" \
 "../tm4c123gh6pm.cmd" \
@@ -149,9 +154,8 @@ calibration.out: $(OBJS) $(CMD_SRCS) $(LIB_SRCS) $(GEN_CMDS)
 # Other Targets
 clean:
 	-$(RM) $(EXE_OUTPUTS__QUOTED)
-	-$(RM) "Timer.obj" "lcd.obj" "main.obj" "movement.obj" "open_interface.obj" "tm4c123gh6pm_startup_ccs.obj" 
-	-$(RM) "Timer.d" "lcd.d" "main.d" "movement.d" "open_interface.d" "tm4c123gh6pm_startup_ccs.d" 
-	-$(RM) "movement.d" 
+	-$(RM) "Timer.obj" "adc.obj" "button.obj" "lcd.obj" "main.obj" "movement.obj" "open_interface.obj" "ping.obj" "servo.obj" "tm4c123gh6pm_startup_ccs.obj" "uart.obj" 
+	-$(RM) "Timer.d" "adc.d" "button.d" "lcd.d" "main.d" "movement.d" "open_interface.d" "ping.d" "servo.d" "tm4c123gh6pm_startup_ccs.d" "uart.d" 
 	-@echo 'Finished clean'
 	-@echo ' '
 

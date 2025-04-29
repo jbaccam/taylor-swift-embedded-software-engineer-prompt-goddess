@@ -1,6 +1,7 @@
 # FIXED
 
 movement.obj: ../movement.c
+movement.obj: ../movement.h
 movement.obj: ../open_interface.h
 movement.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/stdio.h
 movement.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/_ti_config.h
@@ -25,9 +26,11 @@ movement.obj: C:/ti/TivaWare_C_Series-2.2.0.295/inc/tm4c123gh6pm.h
 movement.obj: C:/ti/ccs1271/ccs/tools/compiler/ti-cgt-arm_20.2.7.LTS/include/stdbool.h
 movement.obj: C:/ti/TivaWare_C_Series-2.2.0.295/driverlib/interrupt.h
 movement.obj: ../lcd.h
-movement.obj: ../movement.h
+movement.obj: ../uart.h
 
 ../movement.c:
+
+../movement.h:
 
 ../open_interface.h:
 
@@ -77,5 +80,5 @@ C:/ti/TivaWare_C_Series-2.2.0.295/driverlib/interrupt.h:
 
 ../lcd.h:
 
-../movement.h:
+../uart.h:
 

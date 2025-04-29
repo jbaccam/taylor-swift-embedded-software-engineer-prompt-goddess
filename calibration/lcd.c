@@ -1,12 +1,14 @@
 /**
  * lcd.c: Functions for displaying content on the 4x16 Character LCD Screen.
- * Updated on 8/22/19 for compatibility with Isaac Rex's timer fixes.  (date corrected by phjones)
+ * Updated on 8/22/18 for compatibility with Isaac Rex's timer fixes.  
  *
  *  @author Noah Bergman, Eric Middleton
  *  @date 02/29/2016
  *
  *
  */
+// phjones: Note typo??, above was updated on 9/22/2019 not 2018, correct???
+
 
 
 #include "lcd.h"

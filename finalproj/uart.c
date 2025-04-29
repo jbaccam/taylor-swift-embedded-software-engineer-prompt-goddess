@@ -18,7 +18,7 @@
 volatile char command_byte = -1;   // e.g. 's' for stop
 volatile int  command_flag = 0;    // set to 1 in ISR if command_byte received
 
-void uart_interrupt_init(void){
+void uart_init(void){
     //enable clock to GPIO port B
     SYSCTL_RCGCGPIO_R |= 0x02;  // enable clock to Port B (bit 1) page 340
 
@@ -105,11 +105,18 @@ void uart_interrupt_init(void){
 
 // For Lab 6, we typically do not call uart_receive(), so it can be left empty or commented out.
 // "DO NOT USE this busy-wait function if using RX interrupt"
-char uart_receive(void) {
-    // Wait while RXFE (bit 4) is set => FIFO is empty
-    while (UART1_FR_R & 0x10) {}
-    return (char) (UART1_DR_R & 0xFF);
+char uart_receive(void)
+{
+    char data = 0;
+
+    while (UART1_FR_R & 0x00000010){
+
+    }
+    data = (char)(UART1_DR_R & 0xFF);
+    return data;
+
 }
+
 
 void uart_sendChar(char data){
     // wait while TXFF (bit5)
@@ -122,6 +129,21 @@ void uart_sendStr(const char *data){
     while(data[i] != '\0'){
         uart_sendChar(data[i]);
         i++;
+    }
+}
+
+/**
+ * Non-blocking UART receive function
+ * Returns the received character, or 255 if no data is available
+ */
+char uart_receive_nonblocking(void) {
+    // Check if RXFE (bit 4) is set in the UART Flag Register (FR)
+    // RXFE = 1 means receive FIFO is empty (no data available)
+    if ((UART1_FR_R & 0x10) != 0) {
+        return 255; // No data available
+    } else {
+        // Data is available, read and return
+        return (char)(UART1_DR_R & 0xFF);
     }
 }
 
@@ -152,16 +174,5 @@ void UART1_Handler(void)
                 command_flag = 1; // let main know
             }
         }
-    }
-}
-
-// Non-blocking receive function - returns 255 if no data available
-char uart_receive_nonblocking(void) {
-    if ((UART0_FR_R & UART_FR_RXFE) != 0) {
-        // no data available
-        return 255;
-    } else {
-        // data is available
-        return (char)(UART0_DR_R & 0xFF);
     }
 }

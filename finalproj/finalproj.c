@@ -1,527 +1,471 @@
 /*
- * mars_rover.c - Team SE2 "Ping Patrol" Mars Rover Implementation
- * 
- * Manual navigation control with:
- * - Obstacle detection and avoidance
- * - Water sample detection with spin reaction
- * - Boundary detection and adherence
- * - Object scanning and reporting
- * - Current orientation tracking
- * 
- * Created: April 27, 2025
- * Authors: Jeremiah (Jay), Luke, Gavin, Judson, Benjamin
+ * finalproj.c - Mars Rover "Ping Patrol" - 180 Scan
+ *
+ * Fully C90 compatible, clear and simple
  */
 
- #include "Timer.h"
- #include "lcd.h"
- #include "uart.h"
- #include "open_interface.h"
- #include "ping.h"
- #include "servo.h"
- #include "adc.h"
- #include "movement.h"
- #include <math.h>
- #include <stdbool.h>
- #include <string.h>
- 
- // constants for detection
- #define BLUE_THRESHOLD 2800    // threshold for blue paper detection (needs calibration)
- #define IR_THRESHOLD 400       // threshold for IR object detection
- #define SCAN_STEP 2            // scan every 2 degrees
- 
- // function prototypes
- void initialize_hardware(void);
- void manual_mode(oi_t *sensor_data);
- bool check_for_water_sample(oi_t *sensor_data);
- void spin_for_water_sample(oi_t *sensor_data);
- bool check_for_cliff(oi_t *sensor_data);
- void update_orientation_display(float current_angle);
- 
- // global variables
- float current_orientation = 90.0; // initial orientation (90 = forward)
- 
- int main(void) {
-     // initialize hardware components
-     initialize_hardware();
-     
-     // initialize the cybot
-     oi_t *sensor_data = oi_alloc();
-     oi_init(sensor_data);
-     
-     // display welcome message
-     lcd_printf("Mars Rover\nInitialized");
-     
-     char toPutty[100];
-     sprintf(toPutty, "=== Mars Rover - Team Ping Patrol ===\r\n");
-     uart_sendStr(toPutty);
-     sprintf(toPutty, "Manual control mode active\r\n");
-     uart_sendStr(toPutty);
-     sprintf(toPutty, "Current orientation: %.1f degrees\r\n", current_orientation);
-     uart_sendStr(toPutty);
-     sprintf(toPutty, "Controls:\r\n");
-     uart_sendStr(toPutty);
-     sprintf(toPutty, "  w - forward 5cm\r\n  s - backward 5cm\r\n  a - turn CCW 10°\r\n  d - turn CW 10°\r\n");
-     uart_sendStr(toPutty);
-     sprintf(toPutty, "  m - 180° scan\r\n  n - 360° scan\r\n");
-     uart_sendStr(toPutty);
-     
-     // start in manual mode
-     manual_mode(sensor_data);
-     
-     // clean up
-     oi_free(sensor_data);
-     return 0;
- }
- 
- // initialize all hardware components
- void initialize_hardware(void) {
-     timer_init();
-     lcd_init();
-     uart_init();
-     adc_init();
-     ping_init();
-     servo_init();
- }
- 
- // display current orientation in putty
- void update_orientation_display(float current_angle) {
-     char toPutty[100];
-     sprintf(toPutty, "Current orientation: %.1f degrees\r\n", current_angle);
-     uart_sendStr(toPutty);
- }
- 
- // manual control mode with base station commands
- void manual_mode(oi_t *sensor_data) {
-     int flag = 1;  // simple integer flag, 1 = true
-     int i, j, k;
-     float pingDistance;
-     int IRmeasurement;
-     char inputCharacter;
-     char toPutty[100];
-     
-     lcd_printf("Manual Mode");
-     
-     while (flag == 1) {
-         i = 0;
-         j = 0;
-         k = 0;
-         
-         // check for emergency conditions
-         oi_update(sensor_data);
-         
-         // Check for bumps - halt immediately if detected
-         if (sensor_data->bumpLeft) {
-             // Emergency stop
-             oi_setWheels(0, 0);
-             sprintf(toPutty, "\r\n*** LEFT BUMPER TRIGGERED! EMERGENCY STOP ***\r\n");
-             uart_sendStr(toPutty);
-             
-             // Back up slightly for safety
-             move_backwards(sensor_data, 5);
-             
-             // Update status
-             sprintf(toPutty, "Backed up 5cm for safety. Please choose a new direction.\r\n");
-             uart_sendStr(toPutty);
-             update_orientation_display(current_orientation);
-             continue;
-         }
-         
-         if (sensor_data->bumpRight) {
-             // Emergency stop
-             oi_setWheels(0, 0);
-             sprintf(toPutty, "\r\n*** RIGHT BUMPER TRIGGERED! EMERGENCY STOP ***\r\n");
-             uart_sendStr(toPutty);
-             
-             // Back up slightly for safety
-             move_backwards(sensor_data, 5);
-             
-             // Update status
-             sprintf(toPutty, "Backed up 5cm for safety. Please choose a new direction.\r\n");
-             uart_sendStr(toPutty);
-             update_orientation_display(current_orientation);
-             continue;
-         }
-         
-         // Check for cliffs
-         if (check_for_cliff(sensor_data)) {
-             // Emergency stop
-             oi_setWheels(0, 0);
-             sprintf(toPutty, "\r\n*** CLIFF DETECTED! EMERGENCY STOP ***\r\n");
-             uart_sendStr(toPutty);
-             move_backwards(sensor_data, 10); // back up 10cm for safety
-             
-             // Update status
-             sprintf(toPutty, "Backed up 10cm for safety. Please choose a new direction.\r\n");
-             uart_sendStr(toPutty);
-             update_orientation_display(current_orientation);
-             continue;
-         }
-         
-         // Check for water samples (blue paper)
-         if (check_for_water_sample(sensor_data)) {
-             // Stop and collect sample
-             oi_setWheels(0, 0);
-             sprintf(toPutty, "\r\n*** WATER SAMPLE DETECTED! Collecting... ***\r\n");
-             uart_sendStr(toPutty);
-             spin_for_water_sample(sensor_data);
-             update_orientation_display(current_orientation);
-         }
- 
-         // Check for manual commands using non-blocking UART
-         inputCharacter = uart_receive_nonblocking();
-         if (inputCharacter != 255) { // 255 means no character received
-             uart_sendChar(inputCharacter);
-             
-             if (inputCharacter == 'w') {
-                 // Move forward 5cm
-                 sprintf(toPutty, "\r\nMoving Forward 5cm.\r\n");
-                 uart_sendStr(toPutty);
-                 move_forward(sensor_data, 5);
-                 sprintf(toPutty, "Done Moving Forward.\r\n");
-                 uart_sendStr(toPutty);
-                 update_orientation_display(current_orientation);
-             }
-             else if (inputCharacter == 's') {
-                 // Move backward 5cm
-                 sprintf(toPutty, "\r\nMoving Backwards 5cm.\r\n");
-                 uart_sendStr(toPutty);
-                 move_backwards(sensor_data, 5);
-                 sprintf(toPutty, "Done Moving Backwards.\r\n");
-                 uart_sendStr(toPutty);
-                 update_orientation_display(current_orientation);
-             }
-             else if (inputCharacter == 'd') {
-                 // Turn clockwise 10 degrees
-                 sprintf(toPutty, "\r\nTurning Clockwise 10 Degrees.\r\n");
-                 uart_sendStr(toPutty);
-                 turn_clockwise(sensor_data, 10);
-                 
-                 // Update current orientation
-                 current_orientation -= 10;
-                 if (current_orientation < 0) {
-                     current_orientation += 360;
-                 }
-                 
-                 sprintf(toPutty, "Done Turning Clockwise.\r\n");
-                 uart_sendStr(toPutty);
-                 update_orientation_display(current_orientation);
-             }
-             else if (inputCharacter == 'a') {
-                 // Turn counterclockwise 10 degrees
-                 sprintf(toPutty, "\r\nTurning Counterclockwise 10 Degrees.\r\n");
-                 uart_sendStr(toPutty);
-                 turn_counterclockwise(sensor_data, 10);
-                 
-                 // Update current orientation
-                 current_orientation += 10;
-                 if (current_orientation >= 360) {
-                     current_orientation -= 360;
-                 }
-                 
-                 sprintf(toPutty, "Done Turning Counterclockwise.\r\n");
-                 uart_sendStr(toPutty);
-                 update_orientation_display(current_orientation);
-             }
-             else if (inputCharacter == 'm') {
-                 // Perform 180-degree scan
-                 oi_setWheels(0, 0);
-                 
-                 sprintf(toPutty, "\r\nBeginning 180 Degree Scan.\r\n");
-                 uart_sendStr(toPutty);
-                 
-                 int sensorAngle[80] = {0};        // angles where objects are detected
-                 float sensorDistance[80] = {0};   // distances to objects
-                 
-                 sprintf(toPutty, "Degrees\tDistance (cm)\n\r");
-                 uart_sendStr(toPutty);
-                 
-                 // Perform the scan
-                 for (i = 0; i <= 180; i = i + SCAN_STEP) {
-                     servo_move(i);
-                     pingDistance = ping_read();
-                     IRmeasurement = adc_read();
-                     
-                     if (IRmeasurement > IR_THRESHOLD) {
-                         sprintf(toPutty, "%d\t%f\n\r", i, pingDistance);
-                         uart_sendStr(toPutty);
-                         
-                         sensorAngle[k] = i;
-                         sensorDistance[k] = pingDistance;
-                         k++;
-                     }
-                     j = 0;
-                 }
-                 
-                 // Analyze detected objects (same as your paste code)
-                 int avgAngle[10] = {0};     // average angle of objects
-                 float avgDist[10] = {0};    // average distance to objects
-                 int width[10] = {0};        // angular width of objects
-                 int l = 0;                  // counter for objects
-                 float StartDist[10] = {0};  // distance at start angle
-                 float EndDist[10] = {0};    // distance at end angle
-                 
-                 // Process object data - this is from your existing code
-                 // It finds distinct objects and calculates their properties
-                 for (i = 1; i <= k; i++) {
-                     if (StartDist[l] == 0) {
-                         StartDist[l] = sensorDistance[i];
-                     }
-                     if (sensorAngle[i] - sensorAngle[i-1] <= 4 && i != k) {
-                         if (sensorAngle[i] - sensorAngle[i-1] == 4) {
-                             j = j + 4;
-                             avgAngle[l] = avgAngle[l] + 4*sensorAngle[i];
-                             avgDist[l] = avgDist[l] + 4*sensorDistance[i];
-                             EndDist[l] = sensorDistance[i];
-                         }
-                         else {
-                             j = j + 2;
-                             avgAngle[l] = avgAngle[l] + 2*sensorAngle[i];
-                             avgDist[l] = avgDist[l] + 2*sensorDistance[i];
-                             EndDist[l] = sensorDistance[i];
-                         }
-                     }
-                     else {
-                         if (j <= 2) {
-                             j = 0;
-                             avgAngle[l] = 0;
-                             avgDist[l] = 0;
-                             StartDist[l] = 0;
-                         }
-                         else {
-                             width[l] = j;
-                             avgAngle[l] = avgAngle[l] / j;
-                             avgDist[l] = avgDist[l] / j;
-                             j = 0;
-                             l++;
-                         }
-                     }
-                 }
-                 
-                 // Calculate linear width using Law of Cosines
-                 float LinearWidth[10] = {0};
-                 for (i = 0; i < l; i++) {
-                     LinearWidth[i] = sqrt(pow(StartDist[i], 2) + pow(EndDist[i], 2) - 
-                                       2*StartDist[i]*EndDist[i]*cos((width[i])*(M_PI / 180)));
-                 }
-                 
-                 // Display results
-                 sprintf(toPutty, "\n\r*** OBJECT DETECTION RESULTS ***\r\n");
-                 uart_sendStr(toPutty);
-                 sprintf(toPutty, "Objects found: %d\r\n", l);
-                 uart_sendStr(toPutty);
-                 sprintf(toPutty, "Object\tRel Angle\tAbs Angle\tDistance\tWidth\n\r");
-                 uart_sendStr(toPutty);
-                 
-                 for (i = 0; i < l; i++) {
-                     // Calculate absolute angle in the environment
-                     float absoluteAngle = fmod(current_orientation - 90 + avgAngle[i], 360);
-                     if (absoluteAngle < 0) absoluteAngle += 360;
-                     
-                     sprintf(toPutty, "%d\t%d°\t\t%.1f°\t\t%.1f cm\t%.1f cm\n\r", 
-                             i + 1, avgAngle[i], absoluteAngle, avgDist[i], LinearWidth[i]);
-                     uart_sendStr(toPutty);
-                 }
-                 
-                 // Return servo to center position
-                 servo_move(90);
-                 
-                 // Final status update
-                 sprintf(toPutty, "\r\nScan complete. Navigate based on objects shown above.\r\n");
-                 uart_sendStr(toPutty);
-                 update_orientation_display(current_orientation);
-             }
-             else if (inputCharacter == 'n') {
-                 // This is same as your original n command from your paste
-                 oi_setWheels(0, 0);
-                 
-                 sprintf(toPutty, "\r\nBeginning 360 Degree Scan.\r\n");
-                 uart_sendStr(toPutty);
-                 
-                 int sensorAngle[80] = {0};
-                 float sensorDistance[80] = {0};
-                 
-                 sprintf(toPutty, "Degrees\tDistance (cm)\n\r");
-                 uart_sendStr(toPutty);
-                 
-                 // Scan 0-180 degrees
-                 for (i = 0; i <= 180; i = i + SCAN_STEP) {
-                     servo_move(i);
-                     pingDistance = ping_read();
-                     IRmeasurement = adc_read();
-                     
-                     if (IRmeasurement > IR_THRESHOLD) {
-                         sprintf(toPutty, "%d\t%f\n\r", i, pingDistance);
-                         uart_sendStr(toPutty);
-                         
-                         sensorAngle[k] = i;
-                         sensorDistance[k] = pingDistance;
-                         k++;
-                     }
-                     j = 0;
-                 }
-                 
-                 // Turn robot 180 degrees
-                 autoturn_clockwise(sensor_data, 180);
-                 
-                 // Update orientation after turning
-                 current_orientation -= 180;
-                 if (current_orientation < 0) {
-                     current_orientation += 360;
-                 }
-                 
-                 // Scan second 180 degrees
-                 for (i = 2; i <= 180; i = i + SCAN_STEP) {
-                     servo_move(i);
-                     pingDistance = ping_read();
-                     IRmeasurement = adc_read();
-                     
-                     if (IRmeasurement > IR_THRESHOLD) {
-                         sprintf(toPutty, "%d\t%f\n\r", i + 180, pingDistance);
-                         uart_sendStr(toPutty);
-                         
-                         sensorAngle[k] = i + 180;
-                         sensorDistance[k] = pingDistance;
-                         k++;
-                     }
-                     j = 0;
-                 }
-                 
-                 // Object analysis - identical to your paste code
-                 int avgAngle[10] = {0};
-                 float avgDist[10] = {0};
-                 int width[10] = {0};
-                 int l = 0;
-                 float StartDist[10] = {0};
-                 float EndDist[10] = {0};
-                 
-                 for (i = 1; i <= k; i++) {
-                     if (StartDist[l] == 0) {
-                         StartDist[l] = sensorDistance[i];
-                     }
-                     if (sensorAngle[i] - sensorAngle[i-1] <= 4 && i != k) {
-                         if (sensorAngle[i] - sensorAngle[i-1] == 4) {
-                             j = j + 4;
-                             avgAngle[l] = avgAngle[l] + 4*sensorAngle[i];
-                             avgDist[l] = avgDist[l] + 4*sensorDistance[i];
-                             EndDist[l] = sensorDistance[i];
-                         }
-                         else {
-                             j = j + 2;
-                             avgAngle[l] = avgAngle[l] + 2*sensorAngle[i];
-                             avgDist[l] = avgDist[l] + 2*sensorDistance[i];
-                             EndDist[l] = sensorDistance[i];
-                         }
-                     }
-                     else {
-                         if (j <= 2) {
-                             j = 0;
-                             avgAngle[l] = 0;
-                             avgDist[l] = 0;
-                             StartDist[l] = 0;
-                         }
-                         else {
-                             width[l] = j;
-                             avgAngle[l] = avgAngle[l] / j;
-                             avgDist[l] = avgDist[l] / j;
-                             j = 0;
-                             l++;
-                         }
-                     }
-                 }
-                 
-                 float LinearWidth[10] = {0};
-                 for (i = 0; i < l; i++) {
-                     LinearWidth[i] = sqrt(pow(StartDist[i], 2) + pow(EndDist[i], 2) - 
-                                       2*StartDist[i]*EndDist[i]*cos((width[i])*(M_PI / 180)));
-                 }
-                 
-                 // Display results with absolute angles based on current orientation
-                 sprintf(toPutty, "\n\r*** OBJECT DETECTION RESULTS (360° SCAN) ***\r\n");
-                 uart_sendStr(toPutty);
-                 sprintf(toPutty, "Objects found: %d\r\n", l);
-                 uart_sendStr(toPutty);
-                 sprintf(toPutty, "Object\tRel Angle\tAbs Angle\tDistance\tWidth\n\r");
-                 uart_sendStr(toPutty);
-                 
-                 for (i = 0; i < l; i++) {
-                     // Calculate absolute angle in the environment
-                     float absoluteAngle = fmod(current_orientation - 90 + avgAngle[i], 360);
-                     if (absoluteAngle < 0) absoluteAngle += 360;
-                     
-                     sprintf(toPutty, "%d\t%d°\t\t%.1f°\t\t%.1f cm\t%.1f cm\n\r", 
-                             i + 1, avgAngle[i], absoluteAngle, avgDist[i], LinearWidth[i]);
-                     uart_sendStr(toPutty);
-                 }
-                 
-                 // Return robot to original orientation
-                 autoturn_clockwise(sensor_data, 180);
-                 
-                 // Update orientation after turning back
-                 current_orientation -= 180;
-                 if (current_orientation < 0) {
-                     current_orientation += 360;
-                 }
-                 
-                 // Center servo
-                 servo_move(90);
-                 
-                 // Final status update
-                 sprintf(toPutty, "\r\n360° Scan complete. Navigate based on objects shown above.\r\n");
-                 uart_sendStr(toPutty);
-                 update_orientation_display(current_orientation);
-             }
-         }
-         
-         // Small delay to prevent excessive CPU usage
-         timer_waitMillis(20);
-     }
- }
- 
- // check for water samples (blue paper) using cliff sensors
- bool check_for_water_sample(oi_t *sensor_data) {
-     // cliff sensors return high values for reflective surfaces
-     // blue paper should have a specific reflection signature
-     
-     // read cliff sensor signals (these are analog values, not binary cliff detection)
-     int left_cliff = sensor_data->cliffLeftSignal;
-     int front_left_cliff = sensor_data->cliffFrontLeftSignal;
-     int front_right_cliff = sensor_data->cliffFrontRightSignal;
-     int right_cliff = sensor_data->cliffRightSignal;
-     
-     // check if any sensor detects blue paper
-     // blue paper reflects IR differently than black surface or white tape
-     if (front_left_cliff > BLUE_THRESHOLD || front_right_cliff > BLUE_THRESHOLD) {
-         return true;
-     }
-     
-     return false;
- }
- 
- // check for cliff/hole detection to prevent falling
- bool check_for_cliff(oi_t *sensor_data) {
-     // cliff sensors return binary indication of cliff detection
-     if (sensor_data->cliffLeft || sensor_data->cliffFrontLeft || 
-         sensor_data->cliffFrontRight || sensor_data->cliffRight) {
-         return true;
-     }
-     return false;
- }
- 
- // spin in place to simulate water sample collection
- void spin_for_water_sample(oi_t *sensor_data) {
-     char toPutty[100];
-     
-     lcd_printf("Collecting\nWater Sample");
-     
-     // spin 360 degrees to simulate collection
-     sprintf(toPutty, "Spinning to collect water sample...\r\n");
-     uart_sendStr(toPutty);
-     
-     // turn clockwise 360 degrees
-     turn_clockwise(sensor_data, 360);
-     
-     // completion message
-     sprintf(toPutty, "Water sample collection complete!\r\n");
-     uart_sendStr(toPutty);
-     lcd_printf("Manual Mode");
- }
+#include "Timer.h"
+#include "lcd.h"
+#include "uart.h"
+#include "open_interface.h"
+#include "servo.h"
+#include "adc.h"
+#include "movement.h"
+
+#include <math.h>
+#include <stdio.h>
+
+/* --- Constants --- */
+#define STEP_DEGREE 2
+#define IR_THRESHOLD 950
+#define MIN_OBJECT_WIDTH_DEGREE 6
+#define FRONT_SCAN_POINTS ((180 / STEP_DEGREE) + 1)
+#define BLUE_THRESHOLD 2850  /* For blue paper (water samples) - returns 2850-2900 */
+#define WHITE_THRESHOLD 2750  /* For white tape (boundaries) - returns 2750-2800 */
+#define FLOOR_THRESHOLD 2200  /* Regular floor - baseline values */
+#define BLACK_THRESHOLD 200   /* Black boxes/craters - values below this are craters */
+
+/* --- Globals --- */
+static int ir_readings[FRONT_SCAN_POINTS];
+static float distances_cm[FRONT_SCAN_POINTS];
+
+/* --- Function Prototypes --- */
+float calculate_distance(int ir_value);
+void scan_front(oi_t *sensor_data);
+void detect_objects();
+void safety_check(oi_t *sensor_data);
+int get_numeric_input();
+void blue_sample_check(oi_t *sensor_data);
+
+/* --- Main Program --- */
+int main(void)
+{
+    timer_init();
+    lcd_init();
+    uart_init();
+    adc_init();
+    servo_init();
+
+    oi_t *sensor_data = oi_alloc();
+    oi_init(sensor_data);
+    servo_move(90); /* Center servo at start */
+
+    char buffer[64];
+
+    uart_sendStr("\r\n*** Mars Rover 'Ping Patrol' Control Interface ***\r\n");
+    uart_sendStr("Commands: (s)can, (m)ove, (b)lue sample check, (h)elp\r\n");
+
+    while (1)
+    {
+        /* Periodically check sensors for safety */
+        oi_update(sensor_data);
+        safety_check(sensor_data);
+
+        uart_sendStr("\r\n> ");
+        char choice = uart_receive();
+        uart_sendChar(choice);
+        uart_sendStr("\r\n");
+
+        if (choice == 's')
+        {
+            oi_setWheels(0, 0); /* Stop before scanning */
+            scan_front(sensor_data);
+            detect_objects();
+        }
+        else if (choice == 'm')
+        {
+            int turn_angle;
+            int distance_mm;
+
+            uart_sendStr("\r\nEnter turn angle (+ right, - left): ");
+            turn_angle = get_numeric_input();
+
+            sprintf(buffer, "\r\nTurn angle set to: %d degrees\r\n", turn_angle);
+            uart_sendStr(buffer);
+
+            uart_sendStr("\r\nEnter distance (cm): ");
+            distance_mm = get_numeric_input() * 10; /* Convert cm to mm */
+
+            sprintf(buffer, "\r\nDistance set to: %d mm\r\n", distance_mm);
+            uart_sendStr(buffer);
+
+            /* Execute turn based on direction */
+            if (turn_angle > 0) {
+                sprintf(buffer, "\r\nTurning right %d degrees...\r\n", turn_angle);
+                uart_sendStr(buffer);
+                turn_right(sensor_data, turn_angle);
+            } else if (turn_angle < 0) {
+                sprintf(buffer, "\r\nTurning left %d degrees...\r\n", -turn_angle);
+                uart_sendStr(buffer);
+                turn_left(sensor_data, -turn_angle);
+            }
+
+            /* Only move if distance is greater than zero */
+            if (distance_mm > 0) {
+                sprintf(buffer, "\r\nMoving forward %d mm...\r\n", distance_mm);
+                uart_sendStr(buffer);
+                move_forward(sensor_data, distance_mm);
+            }
+
+            uart_sendStr("\r\nMovement complete.\r\n");
+        }
+        else if (choice == 'b')
+        {
+            uart_sendStr("\r\nChecking for blue sample...\r\n");
+            blue_sample_check(sensor_data);
+        }
+        else if (choice == 'r')
+        {
+            /* Quick right turn (45 degrees) */
+            uart_sendStr("\r\nQuick turn right 45 degrees\r\n");
+            turn_right(sensor_data, 45);
+        }
+        else if (choice == 'l')
+        {
+            /* Quick left turn (45 degrees) */
+            uart_sendStr("\r\nQuick turn left 45 degrees\r\n");
+            turn_left(sensor_data, 45);
+        }
+        else if (choice == 'f')
+        {
+            /* Quick forward movement (10cm) */
+            uart_sendStr("\r\nQuick move forward 10cm\r\n");
+            move_forward(sensor_data, 100);
+        }
+        else if (choice == 'v')
+        {
+            /* Quick backward movement (10cm) */
+            uart_sendStr("\r\nQuick move backward 10cm\r\n");
+            move_backward(sensor_data, 100);
+        }
+        else if (choice == 'p')
+        {
+            /* Sample collection simulation */
+            uart_sendStr("\r\nSimulating sample collection (spinning 360)...\r\n");
+            turn_left(sensor_data, 360);
+            uart_sendStr("Sample collection complete.\r\n");
+        }
+        else if (choice == 'h')
+        {
+            /* Help menu */
+            uart_sendStr("\r\n--- Mars Rover Command Help ---\r\n");
+            uart_sendStr("s - Scan surroundings\r\n");
+            uart_sendStr("m - Move with turn angle and distance\r\n");
+            uart_sendStr("b - Check for blue sample\r\n");
+            uart_sendStr("r - Quick turn right 45 degrees\r\n");
+            uart_sendStr("l - Quick turn left 45 degrees\r\n");
+            uart_sendStr("f - Quick move forward 10cm\r\n");
+            uart_sendStr("v - Quick move backward 10cm\r\n");
+            uart_sendStr("p - Simulate sample collection (spin 360)\r\n");
+            uart_sendStr("h - Show this help menu\r\n");
+        }
+    }
+}
+
+/* --- Get user input as a number --- */
+int get_numeric_input()
+{
+    char input[16];  /* Buffer for storing input */
+    int index = 0;   /* Current position in buffer */
+    char c;          /* Current character */
+    int value = 0;   /* Final value to return */
+    int negative = 0; /* Flag for negative numbers */
+    int i;           /* Loop counter */
+
+    /* Clear the input buffer */
+    for (i = 0; i < 16; i++) {
+        input[i] = 0;
+    }
+
+    /* Wait a bit before starting to read (helps with PuTTY) */
+    timer_waitMillis(50);
+
+    /* Clear any pending input */
+    while ((UART1_FR_R & 0x10) == 0) {
+        /* Read and discard any character in buffer */
+        UART1_DR_R;
+    }
+
+    while (1) {
+        /* Wait for a character */
+        c = uart_receive();
+
+        /* Give a small delay after each keypress to avoid duplicates */
+        timer_waitMillis(50);
+
+        /* Check for enter key */
+        if (c == '\r' || c == '\n') {
+            uart_sendStr("\r\n");
+            break;
+        }
+
+        /* Handle backspace */
+        if (c == 8 || c == 127) {
+            if (index > 0) {
+                index--;
+                uart_sendStr("\b \b"); /* Erase character on terminal */
+            }
+            continue;
+        }
+
+        /* Handle minus sign (only at beginning) */
+        if (c == '-' && index == 0) {
+            input[index++] = c;
+            uart_sendChar(c);
+            negative = 1;
+            continue;
+        }
+
+        /* Only accept digits, with a reasonable max length */
+        if (c >= '0' && c <= '9' && index < 15) {
+            input[index++] = c;
+            uart_sendChar(c); /* Echo character once */
+        }
+    }
+
+    /* End the string */
+    input[index] = '\0';
+
+    /* Print what we're parsing */
+    uart_sendStr("Input: ");
+    uart_sendStr(input);
+    uart_sendStr("\r\n");
+
+    /* Convert string to integer */
+    i = negative ? 1 : 0; /* Start after minus sign if negative */
+
+    /* Manual conversion, digit by digit */
+    while (i < index) {
+        if (input[i] >= '0' && input[i] <= '9') {
+            value = value * 10 + (input[i] - '0');
+        }
+        i++;
+    }
+
+    /* Apply negative sign if needed */
+    if (negative) {
+        value = -value;
+    }
+
+    /* Prevent extreme values */
+    if (value > 1000) {
+        uart_sendStr("Value too large, limiting to 1000\r\n");
+        value = 1000;
+    } else if (value < -1000) {
+        uart_sendStr("Value too small, limiting to -1000\r\n");
+        value = -1000;
+    }
+
+    return value;
+}
+
+/* --- Scan the environment --- */
+void scan_front(oi_t *sensor_data)
+{
+    char buffer[64];
+    int i;
+    int angle = 0;
+    int raw = 0;
+    float distance = 0.0f;
+
+    uart_sendStr("\r\nBeginning environment scan...\r\n");
+    uart_sendStr("Angle\tDistance(cm)\tIR Raw\r\n-----------------------------------\r\n");
+
+    for (i = 0; i < FRONT_SCAN_POINTS; i++)
+    {
+        angle = i * STEP_DEGREE;
+        servo_move(angle);
+        timer_waitMillis(100); /* Give servo time to position */
+
+        raw = adc_read();
+        distance = calculate_distance(raw);
+
+        ir_readings[i] = raw;
+        distances_cm[i] = distance;
+
+        sprintf(buffer, "%3d\t%7.2f\t%d\r\n", angle, distance, raw);
+        uart_sendStr(buffer);
+    }
+
+    /* Return servo to center position */
+    servo_move(90);
+    uart_sendStr("\r\nScan complete.\r\n");
+}
+
+/* --- Detect objects from scan data --- */
+void detect_objects()
+{
+    char buffer[64];
+    int i;
+    int in_object = 0;
+    int start_index = 0;
+    int object_count = 0;
+
+    uart_sendStr("\r\nObject Detection Results:\r\n");
+    uart_sendStr("Obj | Center | Distance | Width\r\n-----------------------------------\r\n");
+
+    for (i = 0; i < FRONT_SCAN_POINTS; i++)
+    {
+        if (!in_object && ir_readings[i] > IR_THRESHOLD)
+        {
+            in_object = 1;
+            start_index = i;
+        }
+        else if (in_object && (ir_readings[i] < IR_THRESHOLD || i == FRONT_SCAN_POINTS - 1))
+        {
+            int end_index = (i == FRONT_SCAN_POINTS - 1 && ir_readings[i] > IR_THRESHOLD) ? i : i - 1;
+            int object_width_degree = (end_index - start_index + 1) * STEP_DEGREE;
+
+            if (object_width_degree >= MIN_OBJECT_WIDTH_DEGREE)
+            {
+                int j;
+                float min_distance = 999.0f;
+                int min_distance_angle = 0;
+
+                for (j = start_index; j <= end_index; j++)
+                {
+                    if (distances_cm[j] < min_distance && distances_cm[j] > 0)
+                    {
+                        min_distance = distances_cm[j];
+                        min_distance_angle = j * STEP_DEGREE;
+                    }
+                }
+
+                float center_angle = ((start_index * STEP_DEGREE) + (end_index * STEP_DEGREE)) / 2.0f;
+                float width_cm = 2.0f * min_distance * sinf((float)object_width_degree * (float)M_PI / 360.0f);
+
+                object_count++;
+                sprintf(buffer, "%3d | %6.1f | %7.2f | %7.2f\r\n",
+                        object_count, center_angle, min_distance, width_cm);
+                uart_sendStr(buffer);
+            }
+            in_object = 0;
+        }
+    }
+
+    if (object_count == 0) {
+        uart_sendStr("No objects detected.\r\n");
+    } else {
+        sprintf(buffer, "\r\nTotal objects detected: %d\r\n", object_count);
+        uart_sendStr(buffer);
+    }
+}
+
+/* --- Check safety sensors --- */
+void safety_check(oi_t *sensor_data)
+{
+    char buffer[64];
+
+    /* Check for bumpers */
+    if (sensor_data->bumpLeft || sensor_data->bumpRight)
+    {
+        uart_sendStr("\r\n*** WARNING: Obstacle collision detected! ***\r\n");
+        move_backward(sensor_data, 50); /* Backup 5 cm */
+    }
+
+    /* Check for white tape boundaries */
+    if ((sensor_data->cliffLeftSignal > WHITE_THRESHOLD &&
+         sensor_data->cliffLeftSignal < BLUE_THRESHOLD) ||
+        (sensor_data->cliffRightSignal > WHITE_THRESHOLD &&
+         sensor_data->cliffRightSignal < BLUE_THRESHOLD) ||
+        (sensor_data->cliffFrontLeftSignal > WHITE_THRESHOLD &&
+         sensor_data->cliffFrontLeftSignal < BLUE_THRESHOLD) ||
+        (sensor_data->cliffFrontRightSignal > WHITE_THRESHOLD &&
+         sensor_data->cliffFrontRightSignal < BLUE_THRESHOLD))
+    {
+        /* Get which sensors detected the boundary */
+        sprintf(buffer, "\r\n*** WHITE TAPE BOUNDARY DETECTED ***\r\n");
+        uart_sendStr(buffer);
+
+        /* Just back away from boundary (no turning) */
+        uart_sendStr("Backing away from boundary...\r\n");
+        move_backward(sensor_data, 50); /* Backup 5 cm */
+    }
+
+    /* Check for black craters/holes */
+    if (sensor_data->cliffLeftSignal < BLACK_THRESHOLD ||
+        sensor_data->cliffRightSignal < BLACK_THRESHOLD ||
+        sensor_data->cliffFrontLeftSignal < BLACK_THRESHOLD ||
+        sensor_data->cliffFrontRightSignal < BLACK_THRESHOLD)
+    {
+        /* Get which sensors detected the crater */
+        sprintf(buffer, "\r\n*** BLACK CRATER DETECTED ***\r\n");
+        uart_sendStr(buffer);
+
+        /* Just back away from crater (no turning) */
+        uart_sendStr("Backing away from crater...\r\n");
+        move_backward(sensor_data, 50); /* Backup 5 cm */
+    }
+
+    /* Check for blue samples - values ABOVE the blue threshold */
+    if (sensor_data->cliffLeftSignal >= BLUE_THRESHOLD ||
+        sensor_data->cliffRightSignal >= BLUE_THRESHOLD ||
+        sensor_data->cliffFrontLeftSignal >= BLUE_THRESHOLD ||
+        sensor_data->cliffFrontRightSignal >= BLUE_THRESHOLD)
+    {
+        /* Display which sensors detected blue sample */
+        sprintf(buffer, "\r\n*** BLUE SAMPLE DETECTED ***\r\n");
+        uart_sendStr(buffer);
+
+        /* Stop the robot */
+        oi_setWheels(0, 0);
+
+        /* Collect sample data by spinning */
+        uart_sendStr("Collecting sample data (spinning 360�)...\r\n");
+        turn_left(sensor_data, 360);
+
+        uart_sendStr("Sample collection complete.\r\n");
+    }
+}
+
+/* --- Updated blue sample check function --- */
+void blue_sample_check(oi_t *sensor_data)
+{
+    char buffer[64];
+
+    oi_update(sensor_data);
+
+    /* Display all cliff sensor values for debugging */
+    sprintf(buffer, "Cliff values: L=%d, FL=%d, FR=%d, R=%d\r\n",
+            sensor_data->cliffLeftSignal,
+            sensor_data->cliffFrontLeftSignal,
+            sensor_data->cliffFrontRightSignal,
+            sensor_data->cliffRightSignal);
+    uart_sendStr(buffer);
+
+    /* Check if any cliff sensor detects blue paper */
+    if (sensor_data->cliffLeftSignal >= BLUE_THRESHOLD ||
+        sensor_data->cliffRightSignal >= BLUE_THRESHOLD ||
+        sensor_data->cliffFrontLeftSignal >= BLUE_THRESHOLD ||
+        sensor_data->cliffFrontRightSignal >= BLUE_THRESHOLD)
+    {
+        uart_sendStr("*** BLUE SAMPLE DETECTED! ***\r\n");
+        uart_sendStr("Collecting sample data (spinning)...\r\n");
+
+        /* Stop first */
+        oi_setWheels(0, 0);
+        timer_waitMillis(500);
+
+        /* Spin in place for sample collection simulation */
+        turn_left(sensor_data, 360);
+
+        uart_sendStr("Sample collection complete.\r\n");
+    }
+    else
+    {
+        uart_sendStr("No blue sample detected.\r\n");
+    }
+}
+
+/* --- Calculate distance from IR sensor value --- */
+float calculate_distance(int irValue)
+{
+    if (irValue <= 50) {  /* Prevent division by zero or very small values */
+        return 150.0f;    /* Return a large value indicating "too far" */
+    }
+
+    /* Simple distance calculation */
+    float distance = 100000.0f / (float)irValue;
+
+    return distance;
+}

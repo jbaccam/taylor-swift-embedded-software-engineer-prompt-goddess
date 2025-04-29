@@ -138,7 +138,7 @@ unsigned int timer_getMicros(void) {
 }
 
 /**
- * @brief Pauses execution for the specified number of microseconds.
+ * @brief Pauses execution for the specifeid number of microseconds.
  *
  * @param delay_time number of microseconds to pause for
  */
@@ -171,9 +171,9 @@ void timer_waitMicros(uint32_t delay_time) {
 }
 
 /**
- * @brief Pauses execution for the specified number of milliseconds.
+ * @brief Pauses execution for the specified number of microseconds.
  *
- * @param delay_time number of milliseconds to pause for
+ * @param delay_time number of microseconds to pause for
  */
 //unsigned int
 void timer_waitMillis(uint32_t delay_time) {

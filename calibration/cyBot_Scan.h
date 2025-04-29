@@ -8,7 +8,7 @@
 
 // Scan value
 typedef struct{
-    float sound_dist;  // Distance in cm from PING sensor (cyBOT_Scan returns -1.0 if PING is not enabled)
+    float sound_dist;  // Distance from PING sensor (cyBOT_Scan returns -1.0 if PING is not enabled)
     int IR_raw_val;    // Raw ADC value from IR sensor (cyBOT_Scan returns -1 if IR is not enabled)
 } cyBOT_Scan_t;
 

@@ -1,10 +1,7 @@
-/**
+/*
  * movement.h
  *
- * Movement control functions for the CyBot
- *
- * @author Your Name
- * @date March 24, 2025
+ * Header file for Cybot movement functions
  */
 
 #ifndef MOVEMENT_H_
@@ -12,22 +9,39 @@
 
 #include "open_interface.h"
 
-// Movement parameters
-#define MOVE_SPEED 250
-#define TURN_SPEED 200
-#define BACKUP_DISTANCE 150
-#define OBSTACLE_AVOID_DISTANCE 250
-#define STOP_DISTANCE 10.0  // Stop 10cm from the target object
-
-// Basic movement functions
+/**
+ * Moves the Cybot forward by the specified distance
+ * @param sensor_data Pointer to oi_t sensor struct
+ * @param distance_mm Distance to move in millimeters
+ */
 void move_forward(oi_t *sensor_data, double distance_mm);
+
+/**
+ * Moves the Cybot backward by the specified distance
+ * @param sensor_data Pointer to oi_t sensor struct
+ * @param distance_mm Distance to move in millimeters
+ */
 void move_backward(oi_t *sensor_data, double distance_mm);
+
+/**
+ * Turns the Cybot right (clockwise) by the specified angle
+ * @param sensor_data Pointer to oi_t sensor struct
+ * @param degrees Angle to turn in degrees
+ */
 void turn_right(oi_t *sensor_data, double degrees);
+
+/**
+ * Turns the Cybot left (counter-clockwise) by the specified angle
+ * @param sensor_data Pointer to oi_t sensor struct
+ * @param degrees Angle to turn in degrees
+ */
 void turn_left(oi_t *sensor_data, double degrees);
-int go_to_position(oi_t *sensor_data, float angle, float distance_cm);
 
-
-// Smart movement with obstacle avoidance
+/**
+ * Moves the Cybot forward with obstacle avoidance
+ * @param sensor_data Pointer to oi_t sensor struct
+ * @param distance_mm Distance to move in millimeters
+ */
 void move_forward_smart(oi_t *sensor_data, double distance_mm);
 
 #endif /* MOVEMENT_H_ */

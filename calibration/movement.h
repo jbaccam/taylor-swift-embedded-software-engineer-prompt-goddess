@@ -1,22 +1,20 @@
 /*
  * movement.h
  *
- *  Created on: Feb 7, 2025
- *      Author: jjbaccam
+ *  Created on: Sep 9, 2021
+ *      Author: tdbolton
  */
-
 
 #ifndef MOVEMENT_H_
 #define MOVEMENT_H_
 
 #include "open_interface.h"
-
-// Prototypes of movement functions:
-void turn_right(oi_t *sensor_data, double degrees);
-void turn_left(oi_t *sensor_data, double degrees);
-void move_forward(oi_t *sensor_data, double distance_mm);
-void move_backward(oi_t *sensor_data, double distance_mm);
-void move_square(oi_t *sensor_data);
-void move_forward_smart(oi_t *sensor_data, double distance_mm);
+void turn_clockwise(oi_t *sensor, int degrees);
+void turn_counterclockwise(oi_t *sensor, int degrees);
+void move_backwards(oi_t *sensor, int centimeters);
+void move_forward(oi_t *sensor, int centimeters);
+void go_to_object(oi_t *sensor, int centimeters);
+void autoturn_clockwise(oi_t *sensor, int degrees);
+void autoturn_counterclockwise(oi_t *sensor, int degrees);
 
 #endif /* MOVEMENT_H_ */

@@ -1,148 +1,163 @@
-/*
- * movement.c
- *
- *  Created on: Feb 7, 2025
- *      Author: jjbaccam
- */
 
-#include "open_interface.h"
 #include "movement.h"
-#include "Timer.h"
+#include "uart.h"
 
-void turn_right(oi_t *sensor_data, double degrees);
-void turn_left(oi_t *sensor_data, double degrees);
-void move_forward(oi_t *sensor_data, double distance_mm);
-void move_backward(oi_t *sensor_data, double distance_mm);
-void move_square(oi_t *sensor_data);
-void move_forward_smart(oi_t *sensor_data, double distance_mm);
-
-void move_forward(oi_t *sensor_data, double distance_mm)
-{
-    double sum = 0; // distance member in oi_t struct is type double, this tracks the total distance moved
-    distance_mm = distance_mm * 0.95; // makes up going too far
-    oi_setWheels(250, 250); // move forward at full speed
-
-    // we loop until sum accumulates enough negative values to reach -distance
-    while (sum <= distance_mm)
-    {
-        oi_update(sensor_data); // update sensor data
-        sum += sensor_data->distance; // use -> notation since pointer, accumulates negative distance values
+void move_backwards(oi_t *sensor, int centimeters) {        //moves cybot backwards
+    double sum = 0;
+    oi_setWheels(-50, -50);                               // sets speed of each wheel to -100 mm/s
+    while (sum < centimeters * 10) {                        // sets desired distance
+        oi_update(sensor);
+        sum -= sensor->distance;
     }
-
-    oi_setWheels(0, 0); //stop
-    timer_waitMillis(500);
-
+    oi_setWheels(0, 0);                                     // stops cybot
 }
 
-void move_backward(oi_t *sensor_data, double distance_mm)
-{
-    double sum = 0; // distance member in oi_t struct is type double, this tracks the total distance moved
-    distance_mm = distance_mm; // makes up going too far
-    oi_setWheels(-250, -250); // move forward at full speed
+void move_forward(oi_t *sensor, int centimeters) { //moves the cybot forward
+    double sum = 0;
+    char toPutty[60];
+    char *toPutty_ptr = toPutty;
 
-    // since robot is moving backwards, sensor_data->distance will be negative
-    // we loop until sum accumulates enough negative values to reach -distance
-    while (sum > -distance_mm)
-    {
-        oi_update(sensor_data); // update sensor data
-        sum += sensor_data->distance; // use -> notation since pointer, accumulates negative distance values
-    }
-
-    oi_setWheels(0, 0); //stop
-    timer_waitMillis(500);
-
-}
-
-void turn_right(oi_t *sensor_data, double degrees)
-{
-    double sum = 0; // distance member in oi_t struct is type double
-    degrees = degrees * -1 + 12;
-    oi_setWheels(-200, 200); // turn speed
-
-    while (sum >= degrees)
-    {
-        oi_update(sensor_data);
-        sum += sensor_data->angle; // use -> notation since pointer
-    }
-
-    oi_setWheels(0, 0); //stop
-    timer_waitMillis(500);
-}
-
-void turn_left(oi_t *sensor_data, double degrees)
-{
-    degrees -= 12;
-    double sum = 0; // distance member in oi_t struct is type double
-    oi_setWheels(200, -200); //move forward at full speed
-
-    while (sum <= degrees)
-    {
-        oi_update(sensor_data);
-        sum += sensor_data->angle; // use -> notation since pointer
-    }
-
-    oi_setWheels(0, 0); //stop
-    timer_waitMillis(500);
-}
-
-void move_square(oi_t *sensor_data)
-{
-    move_forward(sensor_data, 500);
-    turn_right(sensor_data, 90);
-
-    move_forward(sensor_data, 500);
-    turn_right(sensor_data, 90);
-
-    move_forward(sensor_data, 500);
-    turn_right(sensor_data, 90);
-
-    move_forward(sensor_data, 500);
-    turn_right(sensor_data, 90);
-}
-
-void move_forward_smart(oi_t *sensor_data, double distance_mm)
-{
-    double distance_moved = 0;
-    int right_bump_status = 0;
-    int left_bump_status = 0;
-    int backup_distance = 150; //mm
-    int bump_moveaway_distance = 250; //mm
-    oi_setWheels(250, 250);
-
-    while (distance_moved < distance_mm)
-    {
-        oi_update(sensor_data); //update sensor data
-        distance_moved += sensor_data->distance; //update distance value
-        right_bump_status = sensor_data->bumpRight; //update the value of the right bump sensor
-        left_bump_status = sensor_data->bumpLeft; //update the value of the left bump sensor
-
-        if (left_bump_status != 0) // left bumper triggered
-        {
-            oi_setWheels(0, 0);
-            move_backward(sensor_data, backup_distance); // backup after collision
-            distance_moved -= backup_distance; // add distance backed up to total distance covered
-
-            turn_right(sensor_data, 90); // turn right, away from the obstacle
-            move_forward(sensor_data, bump_moveaway_distance); // move forward the 250mm
-
-            turn_left(sensor_data, 90); // turn back
-            oi_setWheels(250, 250); // go forward the remaining distance
+    while (sum < centimeters * 10) { // sets desired distance
+        oi_setWheels(80, 80);      // sets speed of each wheel to 200 mm/s
+        oi_update(sensor);
+        sum += sensor->distance;       // sums distance traveled
+        if (sensor->bumpLeft) {         //executes  if bumped left
+//            move_backwards(sensor, 15);         //moves cybot backwards 15 cm
+//            turn_counterclockwise(sensor, 90);  // turns cybot counterclockwise 90 degrees
+//            oi_setWheels(200, 200);             // sets speed of each wheel to 200 mm/s after turning
+//            int sumLeft = 0;
+//            while (sumLeft < 250) {            //causes the bot to move 25 cm away from obstacle
+//                oi_update(sensor);
+//                sumLeft += sensor->distance;
+//            }
+//            turn_clockwise(sensor, 90);         // turns cybot clockwise 90 degrees
+//            sum = sum - 150;                    // substracks 15 cm from distance traveled because of the cybot moving backwards
+            sprintf(toPutty, "Bumped Left after moving %f cm.\r\n", sum/10.0);
+            uart_sendStr(toPutty_ptr);
+            break;
         }
-
-        if (right_bump_status != 0) // right bumper triggered
-        {
-            oi_setWheels(0, 0);
-            move_backward(sensor_data, backup_distance);  // backup after collision
-            distance_moved -= backup_distance; // add distance backed up to total distance covered
-
-            turn_left(sensor_data, 90); // turn back
-            move_forward(sensor_data, bump_moveaway_distance); // move forward the 250mm
-
-            turn_right(sensor_data, 90); // turn back
-            oi_setWheels(250, 250);  // go forward the remaining distance
+        if (sensor->bumpRight) {                    //executes  if bumped right
+//            move_backwards(sensor, 15);             //moves cybot backwards 15 cm
+//            turn_clockwise(sensor, 90);             // turns cybot clockwise 90 degrees
+//            oi_setWheels(80, 80);                 // sets speed of each wheel to 200 mm/s after turning
+//            int sumLeft = 0;
+//            while (sumLeft < 250) {                 //causes the bot to move 25 cm away from obstacle
+//                oi_update(sensor);
+//                sumLeft += sensor->distance;
+//            }
+//            turn_counterclockwise(sensor, 90);      // turns cybot counterclockwise 90 degrees
+//            sum = sum - 150;                         // substracks 15 cm from distance traveled because of the cybot moving backwards
+            sprintf(toPutty, "Bumped Right after moving %f cm.\n\r", sum/10.0);
+            uart_sendStr(toPutty_ptr);
+            break;
         }
-
+        if (sensor->cliffFrontLeft) {
+            sprintf(toPutty, "Cliff Front Left after moving %f cm.\n\r", sum/10.0);
+            uart_sendStr(toPutty_ptr);
+            break;
+        }
+        if (sensor->cliffFrontRight) {
+            sprintf(toPutty, "Cliff Front Right after moving %f cm.\n\r", sum/10.0);
+            uart_sendStr(toPutty_ptr);
+            break;
+        }
     }
-    oi_setWheels(0, 0); //stop
+    oi_setWheels(0, 0);                              // stops cybot
 }
+
+void go_to_object(oi_t *sensor, int centimeters) {
+    double sum = 0;
+    signed int numBumps = 0;
+
+    while (sum < ((centimeters * 10) + 200)) { // sets desired distance
+        oi_setWheels(80, 80);      // sets speed of each wheel to 100 mm/s
+        oi_update(sensor);
+        sum += sensor->distance;       // sums distance traveled
+        if (sensor->bumpLeft) {         //executes  if bumped left
+            numBumps++;
+            move_backwards(sensor, 15);         //moves cybot backwards 15 cm
+            autoturn_counterclockwise(sensor, 90);  // turns cybot counterclockwise 90 degrees
+            oi_setWheels(80, 80);             // sets speed of each wheel to 200 mm/s after turning
+            int sumLeft = 0;
+            while (sumLeft < 250) {            //causes the bot to move 25 cm away from obstacle
+                oi_update(sensor);
+                sumLeft += sensor->distance;
+            }
+            autoturn_clockwise(sensor, 90);         // turns cybot clockwise 90 degrees
+            sum = sum - 150;                    // subtracts 15 cm from distance traveled because of the cybot moving backwards
+        }
+        if (sensor->bumpRight) {                    //executes  if bumped right
+            numBumps--;
+            move_backwards(sensor, 15);             //moves cybot backwards 15 cm
+            autoturn_clockwise(sensor, 90);             // turns cybot clockwise 90 degrees
+            oi_setWheels(80, 80);                 // sets speed of each wheel to 200 mm/s after turning
+            int sumLeft = 0;
+            while (sumLeft < 250) {                 //causes the bot to move 25 cm away from obstacle
+                oi_update(sensor);
+                sumLeft += sensor->distance;
+            }
+            autoturn_counterclockwise(sensor, 90);      // turns cybot counterclockwise 90 degrees
+            sum = sum - 150;                         // subtracts 15 cm from distance traveled because of the cybot moving backwards
+        }
+        if(numBumps == 0 && sum > ((centimeters * 10) - 115)) {
+            break;
+        }
+    }
+    oi_setWheels(0, 0);                              // stops cybot
+    int sumLeftRight = 0;
+    if (numBumps < 0){
+        autoturn_counterclockwise(sensor, 90);
+    }
+    if (numBumps > 0){
+        autoturn_clockwise(sensor, 90);
+    }
+    while (sumLeftRight < abs(250*numBumps) - 45 - 180) {
+        oi_update(sensor);
+        oi_setWheels(80, 80);                 // sets speed of each wheel to 200 mm/s after turning
+        sumLeftRight += sensor->distance;
+    }
+//    go_to_object(sensor, (abs(25*numBumps) - 4));
+    oi_setWheels(0, 0);
+}
+
+void autoturn_clockwise(oi_t *sensor, int degrees) {        //turns cybot clockwise
+    double sum = 0;
+    oi_setWheels(60, -60);                              //sets the left wheel to 50 mm/s and the right wheel to -50 mm/s
+    while (sum < degrees) {                             // sets the desired angle
+        oi_update(sensor);
+        sum += sensor->angle;
+    }
+    oi_setWheels(0, 0);                                 // stops cybot
+}
+
+void autoturn_counterclockwise(oi_t *sensor, int degrees){      //turns cybot counterclockwise
+    double sum = 0;
+    oi_setWheels(-60, 60);                                  //sets the left wheel to -50 mm/s and the right wheel to 50 mm/s
+    while (sum < degrees){                                  //sets the desired angle
+        oi_update(sensor);
+        sum -= sensor->angle;
+    }
+    oi_setWheels(0, 0);                                // stops cybot
+}
+
+void turn_clockwise(oi_t *sensor, int degrees) {        //turns cybot clockwise
+    double sum = 0;
+    oi_setWheels(38, -38);                              //sets the left wheel to 50 mm/s and the right wheel to -50 mm/s
+    while (sum < degrees) {                             // sets the desired angle
+        oi_update(sensor);
+        sum += sensor->angle;
+    }
+    oi_setWheels(0, 0);                                 // stops cybot
+}
+
+void turn_counterclockwise(oi_t *sensor, int degrees){      //turns cybot counterclockwise
+    double sum = 0;
+    oi_setWheels(-38, 38);                                  //sets the left wheel to -50 mm/s and the right wheel to 50 mm/s
+    while (sum < degrees){                                  //sets the desired angle
+        oi_update(sensor);
+        sum -= sensor->angle;
+    }
+    oi_setWheels(0, 0);                                // stops cybot
+}
+
 

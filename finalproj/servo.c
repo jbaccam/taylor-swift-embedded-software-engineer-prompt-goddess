@@ -10,8 +10,8 @@
 
 // Calibration values for the servo
 // Default values - these will be overwritten by calibration
-int right_calibration_value = 7500;
-int left_calibration_value = 35750;
+int right_calibration_value = 9000;
+int left_calibration_value = 37500;
 
 void servo_init(void)
 {
@@ -56,8 +56,6 @@ void servo_init(void)
 
 void servo_move(float degrees)
 {
-    // Add delay to allow servo to reach position
-    timer_waitMillis(300);
 
     // Calculate match value based on degrees using calibration values
     int matchValue = right_calibration_value +
