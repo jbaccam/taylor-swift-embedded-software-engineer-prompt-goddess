@@ -24,7 +24,7 @@ void adc_init(void){
     GPIO_PORTB_AMSEL_R |= 0x10;       // Enable analog function on PB4
     GPIO_PORTB_ADCCTL_R = 0x00;       // Clear ADC control bits for Port B
 
-    ADC0_SAC_R = 0x4;                // Set hardware averaging to 16x
+    ADC0_SAC_R = 0x5;                // Set hardware averaging to 32x
 
     // ADC Configuration for Sample Sequencer 0 (SS0)
     ADC0_ACTSS_R &= ~0x01;            // Disable SS0 for configuration
