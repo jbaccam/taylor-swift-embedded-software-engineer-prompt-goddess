@@ -17,19 +17,35 @@
 #include <stdio.h>
 
 // constants
-#define STEP_DEGREE 2
+#define STEP_DEGREE 1
 #define IR_THRESHOLD 950
 #define MIN_OBJECT_WIDTH_DEGREE 6
 #define FRONT_SCAN_POINTS ((180 / STEP_DEGREE) + 1)
-#define BLUE_THRESHOLD 2850  // for blue paper water samples returns 2850-2900
-#define WHITE_THRESHOLD 2750  // for white tape boundaries returns 2750-2800
+#define BLUE_THRESHOLD 2800  // for blue paper water samples returns 2800-2900
+#define WHITE_THRESHOLD 2600  // for white tape boundaries returns 2750-2800
 #define FLOOR_THRESHOLD 2200  // regular floor baseline values
 #define BLACK_THRESHOLD 200   // black boxes or craters values below this are craters
+#define MAX_OBJECTS 10        // Maximum number of objects to track
+
+// Object information structure
+typedef struct {
+    float startAngle;
+    float endAngle;
+    float centerAngle;
+    float radialWidth;
+    float distance;
+    float linearWidth;
+} Object;
 
 // globals
 static int ir_readings[FRONT_SCAN_POINTS];
+static int ir_filtered[FRONT_SCAN_POINTS];  // Added for filtered IR values
+static int ir_diff[FRONT_SCAN_POINTS];      // Added for IR edge detection
 static float distances_cm[FRONT_SCAN_POINTS];
 static float ping_distances_cm[FRONT_SCAN_POINTS]; // added for ping scan results
+static Object objects[MAX_OBJECTS];  // Added to store detected objects
+static int object_count = 0;         // Added to track number of objects detected
+char buffer[100];                    // Global buffer for string formatting
 
 // function prototypes
 float calculate_distance(int ir_value);
@@ -40,6 +56,11 @@ void detect_objects_ping(); // added for ping scan detection
 void safety_check(oi_t *sensor_data);
 int get_numeric_input();
 void blue_sample_check(oi_t *sensor_data);
+void filter_sensor_data();  // Added for filtering IR values
+float median_of_3_float(float a, float b, float c);  // Added for filtering
+int median_of_3_int(int a, int b, int c);            // Added for filtering
+void compute_ir_diff();     // Added for edge detection
+float calculate_linear_width(float radialWidth, float distance); // Added for object width
 
 // main program
 int main(void)
@@ -54,8 +75,6 @@ int main(void)
     oi_t *sensor_data = oi_alloc();
     oi_init(sensor_data);
     servo_move(90); // center servo at start
-
-    char buffer[64];
 
     uart_sendStr("\r\n*** Mars Rover 'Ping Patrol' Control Interface ***\r\n");
     uart_sendStr("Commands: (i)r scan, (p)ing scan, (m)ove, (b)lue sample check, (h)elp\r\n");
@@ -75,6 +94,9 @@ int main(void)
         {
             oi_setWheels(0, 0); // stop before scanning
             ir_scan_front(sensor_data);
+            // Filter the IR data before object detection
+            filter_sensor_data();
+            compute_ir_diff();
             detect_objects();
         }
         else if (choice == 'p')
@@ -129,13 +151,13 @@ int main(void)
         {
             // quick right turn 45 degrees
             uart_sendStr("\r\nQuick turn right 45 degrees\r\n");
-            turn_right(sensor_data, 45);
+            turn_right(sensor_data, 10);
         }
         else if (choice == 'l')
         {
             // quick left turn 45 degrees
             uart_sendStr("\r\nQuick turn left 45 degrees\r\n");
-            turn_left(sensor_data, 45);
+            turn_left(sensor_data, 10);
         }
         else if (choice == 'f')
         {
@@ -149,7 +171,7 @@ int main(void)
             uart_sendStr("\r\nQuick move backward 10cm\r\n");
             move_backward(sensor_data, 100);
         }
-        else if (choice == 'p')
+        else if (choice == 's')
         {
             // sample collection simulation
             uart_sendStr("\r\nSimulating sample collection (spinning 360)...\r\n");
@@ -274,7 +296,6 @@ int get_numeric_input()
 // scan the environment using ir sensor
 void ir_scan_front(oi_t *sensor_data)
 {
-    char buffer[64];
     int i;
     int angle = 0;
     int raw = 0;
@@ -282,8 +303,6 @@ void ir_scan_front(oi_t *sensor_data)
 
     uart_sendStr("\r\nBeginning IR environment scan...\r\n");
     uart_sendStr("Angle\tDistance(cm)\tIR Raw\r\n-----------------------------------\r\n");
-    int numSamples = 32;  // number of samples to average
-    int sum = 0;
 
     for (i = 0; i < FRONT_SCAN_POINTS; i++)
     {
@@ -307,7 +326,6 @@ void ir_scan_front(oi_t *sensor_data)
 // scan the environment using ping sensor
 void ping_scan_front(oi_t *sensor_data)
 {
-    char buffer[64];
     int i;
     int angle = 0;
     float ping_distance = 0.0f;
@@ -319,72 +337,199 @@ void ping_scan_front(oi_t *sensor_data)
     {
         angle = i * STEP_DEGREE;
         servo_move(angle);
-        
+
         // use ping for distance measurement
         ping_trigger();
         ping_distance = ping_getDistance();
-        
+
         // store the ping distance
         ping_distances_cm[i] = ping_distance;
 
         sprintf(buffer, "%3d\t%7.2f\r\n", angle, ping_distance);
         uart_sendStr(buffer);
     }
-    
+
     // return servo to center position
     servo_move(90);
     uart_sendStr("\r\nPING scan complete.\r\n");
 }
 
+// Apply median filters to IR data to reduce noise
+void filter_sensor_data()
+{
+    uart_sendStr("\r\nFiltering sensor data...");
+
+    // Copy boundaries directly (no filtering for first and last points)
+    ir_filtered[0] = ir_readings[0];
+    ir_filtered[FRONT_SCAN_POINTS - 1] = ir_readings[FRONT_SCAN_POINTS - 1];
+
+    // Apply median filter of 3 to interior points
+    int i;
+    for (i = 1; i < FRONT_SCAN_POINTS - 1; i++) {
+        // IR filter (integer values)
+        ir_filtered[i] = median_of_3_int(
+            ir_readings[i - 1],
+            ir_readings[i],
+            ir_readings[i + 1]
+        );
+    }
+
+    uart_sendStr(" done.\r\n");
+}
+
+// Compute differences between consecutive IR readings for edge detection
+void compute_ir_diff()
+{
+    ir_diff[0] = 0;  // First element has no difference
+    int i;
+    for (i = 1; i < FRONT_SCAN_POINTS; i++) {
+        ir_diff[i] = ir_filtered[i] - ir_filtered[i - 1];
+    }
+}
+
+// Median filter for float values
+float median_of_3_float(float a, float b, float c)
+{
+    if (a > b) {
+        if (b > c) return b;       // a > b > c
+        else if (a > c) return c;  // a > c >= b
+        else return a;             // c >= a > b
+    }
+    else {
+        if (a > c) return a;       // b >= a > c
+        else if (b > c) return c;  // b > c >= a
+        else return b;             // c >= b >= a
+    }
+}
+
+// Median filter for integer values
+int median_of_3_int(int a, int b, int c)
+{
+    if (a > b) {
+        if (b > c) return b;       // a > b > c
+        else if (a > c) return c;  // a > c >= b
+        else return a;             // c >= a > b
+    }
+    else {
+        if (a > c) return a;       // b >= a > c
+        else if (b > c) return c;  // b > c >= a
+        else return b;             // c >= b >= a
+    }
+}
+
+// Calculate linear width using trigonometry: 2 * distance * sin(angle/2)
+float calculate_linear_width(float radialWidth, float distance)
+{
+    // Convert from degrees to radians
+    float radialWidth_rad = radialWidth * (M_PI / 180.0f);
+
+    // Calculate width using 2 * distance * sin(angle/2)
+    return 2.0f * distance * sin(radialWidth_rad / 2.0f);
+}
+
 // detect objects from ir scan data
 void detect_objects()
 {
-    char buffer[64];
-    int i;
-    int in_object = 0;
-    int start_index = 0;
-    int object_count = 0;
+    uart_sendStr("\r\nProcessing IR scan data...\r\n");
 
+    // Reset object count
+    object_count = 0;
+
+    // Track object detection state
+    int on_object = 0;
+    int start_index = 0;
+    int i, j;
+
+    // Find objects using absolute IR values (without verbose output)
+    for (i = 1; i < FRONT_SCAN_POINTS - 1; i++) {
+        // Start of object: IR value exceeds threshold
+        if (!on_object && ir_filtered[i] > IR_THRESHOLD) {
+            start_index = i;
+            on_object = 1;
+        }
+        // End of object: IR value drops below threshold
+        else if (on_object && ir_filtered[i] < IR_THRESHOLD) {
+            int end_index = i - 1;
+            on_object = 0;
+
+            // Calculate object properties
+            float start_angle = start_index * STEP_DEGREE;
+            float end_angle = end_index * STEP_DEGREE;
+            float radial_width = end_angle - start_angle;
+            float center_angle = (start_angle + end_angle) / 2.0f;
+
+            // Skip objects that are too narrow (likely noise)
+            if (radial_width < MIN_OBJECT_WIDTH_DEGREE) {
+                continue;
+            }
+
+            // Find minimum distance within object boundaries
+            float min_dist = 999.0f;
+            for (j = start_index; j <= end_index; j++) {
+                if (distances_cm[j] < min_dist && distances_cm[j] > 0) {
+                    min_dist = distances_cm[j];
+                }
+            }
+
+            // Calculate linear width using trigonometry
+            float linear_width = calculate_linear_width(radial_width, min_dist);
+
+            // Store the object if we have space
+            if (object_count < MAX_OBJECTS) {
+                objects[object_count].startAngle = start_angle;
+                objects[object_count].endAngle = end_angle;
+                objects[object_count].centerAngle = center_angle;
+                objects[object_count].radialWidth = radial_width;
+                objects[object_count].distance = min_dist;
+                objects[object_count].linearWidth = linear_width;
+                object_count++;
+            }
+        }
+    }
+
+    // If still on an object at end of scan, properly end it
+    if (on_object) {
+        int end_index = FRONT_SCAN_POINTS - 1;
+        float start_angle = start_index * STEP_DEGREE;
+        float end_angle = end_index * STEP_DEGREE;
+        float radial_width = end_angle - start_angle;
+
+        // Skip objects that are too narrow
+        if (radial_width >= MIN_OBJECT_WIDTH_DEGREE) {
+            float center_angle = (start_angle + end_angle) / 2.0f;
+
+            // Find minimum distance within object
+            float min_dist = 999.0f;
+            for (j = start_index; j <= end_index; j++) {
+                if (distances_cm[j] < min_dist && distances_cm[j] > 0) {
+                    min_dist = distances_cm[j];
+                }
+            }
+
+            // Calculate linear width
+            float linear_width = calculate_linear_width(radial_width, min_dist);
+
+            // Store the object if we have space
+            if (object_count < MAX_OBJECTS) {
+                objects[object_count].startAngle = start_angle;
+                objects[object_count].endAngle = end_angle;
+                objects[object_count].centerAngle = center_angle;
+                objects[object_count].radialWidth = radial_width;
+                objects[object_count].distance = min_dist;
+                objects[object_count].linearWidth = linear_width;
+                object_count++;
+            }
+        }
+    }
+
+    // Only display the final results
     uart_sendStr("\r\nIR Object Detection Results:\r\n");
     uart_sendStr("Obj | Center | Distance | Width\r\n-----------------------------------\r\n");
 
-    for (i = 0; i < FRONT_SCAN_POINTS; i++)
-    {
-        if (!in_object && ir_readings[i] > IR_THRESHOLD)
-        {
-            in_object = 1;
-            start_index = i;
-        }
-        else if (in_object && (ir_readings[i] < IR_THRESHOLD || i == FRONT_SCAN_POINTS - 1))
-        {
-            int end_index = (i == FRONT_SCAN_POINTS - 1 && ir_readings[i] > IR_THRESHOLD) ? i : i - 1;
-            int object_width_degree = (end_index - start_index + 1) * STEP_DEGREE;
-
-            if (object_width_degree >= MIN_OBJECT_WIDTH_DEGREE)
-            {
-                int j;
-                float min_distance = 999.0f;
-                int min_distance_angle = 0;
-
-                for (j = start_index; j <= end_index; j++)
-                {
-                    if (distances_cm[j] < min_distance && distances_cm[j] > 0)
-                    {
-                        min_distance = distances_cm[j];
-                        min_distance_angle = j * STEP_DEGREE;
-                    }
-                }
-
-                float center_angle = ((start_index * STEP_DEGREE) + (end_index * STEP_DEGREE)) / 2.0f;
-                float width_cm = 2.0f * min_distance * sinf((float)object_width_degree * (float)M_PI / 360.0f);
-
-                object_count++;
-                sprintf(buffer, "%3d | %6.1f | %7.2f | %7.2f\r\n",
-                        object_count, center_angle, min_distance, width_cm);
-                uart_sendStr(buffer);
-            }
-            in_object = 0;
-        }
+    for (i = 0; i < object_count; i++) {
+        sprintf(buffer, "%3d | %6.1f | %7.2f | %7.2f\r\n",
+                i + 1, objects[i].centerAngle, objects[i].distance, objects[i].linearWidth);
+        uart_sendStr(buffer);
     }
 
     if (object_count == 0) {
@@ -395,56 +540,110 @@ void detect_objects()
     }
 }
 
-// detect objects from ping scan data
+// Detect objects using ping sensor data
 void detect_objects_ping()
 {
-    char buffer[64];
-    int i;
-    int in_object = 0;
-    int start_index = 0;
-    int object_count = 0;
-    float distance_threshold = 60.0; // threshold for ping in cm
+    uart_sendStr("\r\nProcessing PING scan data...\r\n");
 
+    // Reset object count
+    object_count = 0;
+
+    // Track object detection state
+    int on_object = 0;
+    int start_index = 0;
+    int i, j;
+    float threshold_distance = 100.0f; // Adjust based on your environment
+
+    // Find objects by looking for regions with distance < threshold (without verbose output)
+    for (i = 1; i < FRONT_SCAN_POINTS - 1; i++) {
+        // Start of object: Distance is below threshold
+        if (!on_object && ping_distances_cm[i] < threshold_distance && ping_distances_cm[i] > 0) {
+            start_index = i;
+            on_object = 1;
+        }
+        // End of object: Distance goes above threshold
+        else if (on_object && (ping_distances_cm[i] >= threshold_distance || ping_distances_cm[i] <= 0)) {
+            int end_index = i - 1;
+            on_object = 0;
+
+            // Calculate object properties
+            float start_angle = start_index * STEP_DEGREE;
+            float end_angle = end_index * STEP_DEGREE;
+            float radial_width = end_angle - start_angle;
+            float center_angle = (start_angle + end_angle) / 2.0f;
+
+            // Skip objects that are too narrow (likely noise)
+            if (radial_width < MIN_OBJECT_WIDTH_DEGREE) {
+                continue;
+            }
+
+            // Find minimum distance within object boundaries
+            float min_dist = 999.0f;
+            for (j = start_index; j <= end_index; j++) {
+                if (ping_distances_cm[j] < min_dist && ping_distances_cm[j] > 0) {
+                    min_dist = ping_distances_cm[j];
+                }
+            }
+
+            // Calculate linear width using trigonometry
+            float linear_width = calculate_linear_width(radial_width, min_dist);
+
+            // Store the object if we have space
+            if (object_count < MAX_OBJECTS) {
+                objects[object_count].startAngle = start_angle;
+                objects[object_count].endAngle = end_angle;
+                objects[object_count].centerAngle = center_angle;
+                objects[object_count].radialWidth = radial_width;
+                objects[object_count].distance = min_dist;
+                objects[object_count].linearWidth = linear_width;
+                object_count++;
+            }
+        }
+    }
+
+    // If still on an object at end of scan, properly end it
+    if (on_object) {
+        int end_index = FRONT_SCAN_POINTS - 1;
+        float start_angle = start_index * STEP_DEGREE;
+        float end_angle = end_index * STEP_DEGREE;
+        float radial_width = end_angle - start_angle;
+
+        // Skip objects that are too narrow
+        if (radial_width >= MIN_OBJECT_WIDTH_DEGREE) {
+            float center_angle = (start_angle + end_angle) / 2.0f;
+
+            // Find minimum distance within object
+            float min_dist = 999.0f;
+            for (j = start_index; j <= end_index; j++) {
+                if (ping_distances_cm[j] < min_dist && ping_distances_cm[j] > 0) {
+                    min_dist = ping_distances_cm[j];
+                }
+            }
+
+            // Calculate linear width
+            float linear_width = calculate_linear_width(radial_width, min_dist);
+
+            // Store the object if we have space
+            if (object_count < MAX_OBJECTS) {
+                objects[object_count].startAngle = start_angle;
+                objects[object_count].endAngle = end_angle;
+                objects[object_count].centerAngle = center_angle;
+                objects[object_count].radialWidth = radial_width;
+                objects[object_count].distance = min_dist;
+                objects[object_count].linearWidth = linear_width;
+                object_count++;
+            }
+        }
+    }
+
+    // Only display the final results
     uart_sendStr("\r\nPING Object Detection Results:\r\n");
     uart_sendStr("Obj | Center | Distance | Width\r\n-----------------------------------\r\n");
 
-    for (i = 0; i < FRONT_SCAN_POINTS; i++)
-    {
-        if (!in_object && ping_distances_cm[i] < distance_threshold && ping_distances_cm[i] > 0)
-        {
-            in_object = 1;
-            start_index = i;
-        }
-        else if (in_object && (ping_distances_cm[i] >= distance_threshold || ping_distances_cm[i] <= 0 || i == FRONT_SCAN_POINTS - 1))
-        {
-            int end_index = (i == FRONT_SCAN_POINTS - 1 && ping_distances_cm[i] < distance_threshold && ping_distances_cm[i] > 0) ? i : i - 1;
-            int object_width_degree = (end_index - start_index + 1) * STEP_DEGREE;
-
-            if (object_width_degree >= MIN_OBJECT_WIDTH_DEGREE)
-            {
-                int j;
-                float min_distance = 999.0f;
-                int min_distance_angle = 0;
-
-                for (j = start_index; j <= end_index; j++)
-                {
-                    if (ping_distances_cm[j] < min_distance && ping_distances_cm[j] > 0)
-                    {
-                        min_distance = ping_distances_cm[j];
-                        min_distance_angle = j * STEP_DEGREE;
-                    }
-                }
-
-                float center_angle = ((start_index * STEP_DEGREE) + (end_index * STEP_DEGREE)) / 2.0f;
-                float width_cm = 2.0f * min_distance * sinf((float)object_width_degree * (float)M_PI / 360.0f);
-
-                object_count++;
-                sprintf(buffer, "%3d | %6.1f | %7.2f | %7.2f\r\n",
-                        object_count, center_angle, min_distance, width_cm);
-                uart_sendStr(buffer);
-            }
-            in_object = 0;
-        }
+    for (i = 0; i < object_count; i++) {
+        sprintf(buffer, "%3d | %6.1f | %7.2f | %7.2f\r\n",
+                i + 1, objects[i].centerAngle, objects[i].distance, objects[i].linearWidth);
+        uart_sendStr(buffer);
     }
 
     if (object_count == 0) {
@@ -458,8 +657,6 @@ void detect_objects_ping()
 // check safety sensors
 void safety_check(oi_t *sensor_data)
 {
-    char buffer[64];
-
     // check for bumpers
     if (sensor_data->bumpLeft || sensor_data->bumpRight)
     {
@@ -525,8 +722,6 @@ void safety_check(oi_t *sensor_data)
 // updated blue sample check function
 void blue_sample_check(oi_t *sensor_data)
 {
-    char buffer[64];
-
     oi_update(sensor_data);
 
     // display all cliff sensor values for debugging
@@ -569,4 +764,4 @@ float calculate_distance(int irValue) {
     // directly compute the distance from the adc reading y using the derived equation
     float distance = pow(12453.9382f / (float)irValue, 1.0f / 0.7358f);
     return distance;
- }
+}
